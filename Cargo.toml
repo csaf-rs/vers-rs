@@ -1,0 +1,12 @@
+[package]
+name = "vers-rs"
+version = "0.1.0"
+edition = "2024"
+description = "A library for parsing and checking version range specifiers"
+license = "Apache-2.0"
+
+[dependencies]
+thiserror = "2"
+percent-encoding = "2"
+semver = "1"
+derive_more = { version = "2", features = ["from_str", "display"] }
