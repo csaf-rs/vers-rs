@@ -29,6 +29,7 @@ use std::collections::LinkedList;
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
+use crate::range::VersionRange;
 
 /// A version range specifier.
 ///
@@ -42,7 +43,7 @@ use std::str::FromStr;
 /// - `vers:npm/>=1.0.0|<2.0.0` (a range of versions)
 /// - `vers:pypi/*` (any version)
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VersionRange<V : VT> {
+pub struct GenericVersionRange<V : VT> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
     pub versioning_scheme: String,
     
@@ -50,7 +51,133 @@ pub struct VersionRange<V : VT> {
     pub constraints: Vec<VersionConstraint<V>>,
 }
 
-impl<V : VT> VersionRange<V> {
+impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
+    /// Get the versioning scheme used by this range.
+    ///
+    /// # Returns
+    ///
+    /// The versioning scheme string (e.g., "npm", "semver")
+    fn versioning_scheme(&self) -> &str {
+        self.versioning_scheme.as_str()
+    }
+
+    /// Check if a version is contained within this range.
+    ///
+    /// This method implements the algorithm described in the specification to check
+    /// if a version is contained within the range. A version is contained within a
+    /// range if it satisfies any of the constraints.
+    ///
+    /// The algorithm:
+    /// 1. If the constraint list contains only "*", then the version is in the range
+    /// 2. Check for exact matches with equality comparators
+    /// 3. Check for exact matches with inequality comparators
+    /// 4. Check range constraints (>, >=, <, <=) to see if the version falls within any interval
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - The version string to check
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a boolean indicating whether the version is in the range
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vers_rs::{parse, GenericVersionRange};
+    /// use vers_rs::range::VersionRange;
+    /// use vers_rs::schemes::semver::SemVer;
+    ///
+    /// let range = "vers:npm/>=1.0.0|<2.0.0".parse::<GenericVersionRange<SemVer>>().unwrap();
+    /// assert!(range.contains(&"1.5.0".parse().unwrap()).unwrap());
+    /// assert!(!range.contains(&"2.0.0".parse().unwrap()).unwrap());
+    /// ```
+    fn contains(&self, version: &V) -> Result<bool, VersError> {
+        // If the constraint list contains only "*", then the version is in the range
+        if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
+            return Ok(true);
+        }
+
+        // Check for exact matches with equality and inequality comparators
+        for constraint in &self.constraints {
+            match constraint.comparator {
+                Equal | GreaterThanOrEqual | LessThanOrEqual => {
+                    if version == &constraint.version {
+                        return Ok(true);
+                    }
+                },
+                NotEqual => {
+                    if version == &constraint.version {
+                        return Ok(false);
+                    }
+                },
+                _ => {}
+            }
+        }
+
+        // If there are only NotEqual constraints, and we've checked them all without returning,
+        // then the version is in the range
+        if self.constraints.iter().all(|c| c.comparator == NotEqual) {
+            return Ok(true);
+        }
+
+        // Get range constraints
+        let mut range_iterator = self.constraints.iter()
+            .filter(|c| {
+                matches!(
+                    c.comparator,
+                    LessThan | LessThanOrEqual | GreaterThan | GreaterThanOrEqual
+                )
+            })
+            .peekable();
+
+        // Iterate over pairs of range constraints
+        let mut first = true;
+        while let Some(current) = range_iterator.next() {
+            // If this is the first iteration and the current comparator is "<" or "<="
+            // and the tested version is less than the current version
+            if first {
+                if (current.comparator == LessThan || current.comparator == LessThanOrEqual) &&
+                    version < &current.version
+                {
+                    return Ok(true);
+                }
+                first = false;
+            }
+
+            // If this is the last iteration and the current comparator is ">" or ">="
+            // and the tested version is greater than the current version
+            if range_iterator.peek().is_none() &&
+                (current.comparator == GreaterThan || current.comparator == GreaterThanOrEqual) &&
+                version > &current.version
+            {
+                return Ok(true);
+            }
+
+            // If there's a next constraint
+            if let Some(next) = range_iterator.peek() {
+                // If the current comparator is ">" or ">=" and the next comparator is "<" or "<="
+                // and the tested version is greater than the current version
+                // and the tested version is less than the next version
+                if matches!(current.comparator, GreaterThan | GreaterThanOrEqual)
+                    && version > &current.version
+                    && matches!(next.comparator, LessThan | LessThanOrEqual)
+                    && version < &next.version {
+                    return Ok(true);
+                }
+            }
+        }
+
+        // If we get here, the version is not in the range
+        Ok(false)
+    }
+
+    fn constraints(&self) -> &Vec<VersionConstraint<impl VT>> {
+        &self.constraints
+    }
+}
+
+impl<V : VT> GenericVersionRange<V> {
     /// Create a new version range with the given versioning scheme and constraints.
     ///
     /// # Arguments
@@ -245,119 +372,9 @@ impl<V : VT> VersionRange<V> {
 
         Ok(())
     }
-
-    /// Check if a version is contained within this range.
-    ///
-    /// This method implements the algorithm described in the specification to check
-    /// if a version is contained within the range. A version is contained within a
-    /// range if it satisfies any of the constraints.
-    ///
-    /// The algorithm:
-    /// 1. If the constraint list contains only "*", then the version is in the range
-    /// 2. Check for exact matches with equality comparators
-    /// 3. Check for exact matches with inequality comparators
-    /// 4. Check range constraints (>, >=, <, <=) to see if the version falls within any interval
-    ///
-    /// # Arguments
-    ///
-    /// * `version` - The version string to check
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing a boolean indicating whether the version is in the range
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use vers_rs::{parse, VersionRange};
-    /// use vers_rs::schemes::semver::SemVer;
-    ///
-    /// let range = "vers:npm/>=1.0.0|<2.0.0".parse::<VersionRange<SemVer>>().unwrap();
-    /// assert!(range.contains(&"1.5.0".parse().unwrap()).unwrap());
-    /// assert!(!range.contains(&"2.0.0".parse().unwrap()).unwrap());
-    /// ```
-    pub fn contains(&self, version: &V) -> Result<bool, VersError> {
-        // If the constraint list contains only "*", then the version is in the range
-        if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
-            return Ok(true);
-        }
-        
-        // Check for exact matches with equality and inequality comparators
-        for constraint in &self.constraints {
-            match constraint.comparator {
-                Equal | GreaterThanOrEqual | LessThanOrEqual => {
-                    if version == &constraint.version {
-                        return Ok(true);
-                    }
-                },
-                NotEqual => {
-                    if version == &constraint.version {
-                        return Ok(false);
-                    }
-                },
-                _ => {}
-            }
-        }
-
-        // If there are only NotEqual constraints, and we've checked them all without returning,
-        // then the version is in the range
-        if self.constraints.iter().all(|c| c.comparator == NotEqual) {
-            return Ok(true);
-        }
-        
-        // Get range constraints
-        let mut range_iterator = self.constraints.iter()
-            .filter(|c| {
-                matches!(
-                    c.comparator,
-                    LessThan | LessThanOrEqual | GreaterThan | GreaterThanOrEqual
-                )
-            })
-            .peekable();
-        
-        // Iterate over pairs of range constraints
-        let mut first = true;
-        while let Some(current) = range_iterator.next() {
-            // If this is the first iteration and the current comparator is "<" or "<="
-            // and the tested version is less than the current version
-            if first {
-                if (current.comparator == LessThan || current.comparator == LessThanOrEqual) &&
-                    version < &current.version
-                {
-                    return Ok(true);
-                }
-                first = false;
-            }
-
-            // If this is the last iteration and the current comparator is ">" or ">="
-            // and the tested version is greater than the current version
-            if range_iterator.peek().is_none() &&
-                (current.comparator == GreaterThan || current.comparator == GreaterThanOrEqual) &&
-                version > &current.version
-            {
-                return Ok(true);
-            }
-            
-            // If there's a next constraint
-            if let Some(next) = range_iterator.peek() {
-                // If the current comparator is ">" or ">=" and the next comparator is "<" or "<="
-                // and the tested version is greater than the current version
-                // and the tested version is less than the next version
-                if matches!(current.comparator, GreaterThan | GreaterThanOrEqual)
-                    && version > &current.version
-                    && matches!(next.comparator, LessThan | LessThanOrEqual)
-                    && version < &next.version {
-                    return Ok(true);
-                }
-            }
-        }
-        
-        // If we get here, the version is not in the range
-        Ok(false)
-    }
 }
 
-impl<V : VT> FromStr for VersionRange<V> {
+impl<V : VT> FromStr for GenericVersionRange<V> {
     type Err = VersError;
     
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -385,7 +402,7 @@ impl<V : VT> FromStr for VersionRange<V> {
         // Get versioning scheme
         let versioning_scheme = specifier_parts[0].to_lowercase();
         if versioning_scheme.is_empty() {
-            return Err(VersError::InvalidVersioningScheme(versioning_scheme));
+            return Err(VersError::MissingVersioningScheme);
         }
         
         // Get constraint string
@@ -427,7 +444,7 @@ impl<V : VT> FromStr for VersionRange<V> {
     }
 }
 
-impl<V : VT> Display for VersionRange<V> {
+impl<V : VT> Display for GenericVersionRange<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "vers:{}/", self.versioning_scheme)?;
 

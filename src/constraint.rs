@@ -7,16 +7,16 @@
 //! and a version string. It defines a condition that a version must satisfy to be
 //! considered within a version range.
 
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::str::FromStr;
 use percent_encoding::percent_decode_str;
 use crate::{Comparator, VersError};
 
 /// A trait alias for version types that can be used in version constraints and ranges.
-pub trait VT: FromStr + Default + Ord + Clone + Display {}
+pub trait VT: FromStr + Default + Ord + Clone + Display + Debug {}
 
 // Blanket implementation for any type that satisfies the bounds
-impl<T> VT for T where T: FromStr + Default + Ord + Clone + Display {}
+impl<T> VT for T where T: FromStr + Default + Ord + Clone + Display + Debug {}
 
 /// A single version constraint with a comparator and version.
 ///

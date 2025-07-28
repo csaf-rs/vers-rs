@@ -18,9 +18,6 @@ pub enum VersError {
     #[error("Missing versioning scheme")]
     MissingVersioningScheme,
     
-    #[error("Invalid versioning scheme: {0}")]
-    InvalidVersioningScheme(String),
-    
     #[error("Empty version constraints")]
     EmptyConstraints,
     
@@ -34,11 +31,11 @@ pub enum VersError {
     InvalidRange(String),
     
     #[error("Incompatible versioning schemes: {0} and {1}")]
-    IncompatibleSchemes(String, String),
+    IncompatibleVersioningSchemes(String, String),
     
     #[error("Unsupported versioning scheme: {0}")]
-    UnsupportedScheme(String),
+    UnsupportedVersioningScheme(String),
     
-    #[error("Invalid version format for scheme {0}: {1}")]
-    InvalidVersionFormat(String, String),
+    #[error("Invalid version format for scheme {0}: {1}, error was: {2}")]
+    InvalidVersionFormat(&'static str, String, String),
 }

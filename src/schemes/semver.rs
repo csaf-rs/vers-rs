@@ -1,8 +1,12 @@
-use derive_more::{Display, FromStr};
+use crate::VersError;
+use derive_more::Display;
 use semver::Version;
 use std::cmp::Ordering;
+use std::str::FromStr;
 
-#[derive(Display, FromStr, Clone, Debug, PartialEq, Eq, PartialOrd)]
+pub static SEMVER_SCHEME: &str = "semver/npm";
+
+#[derive(Display, Clone, Debug, PartialEq, Eq, PartialOrd)]
 pub struct SemVer(Version);
 
 impl Default for SemVer {
@@ -49,5 +53,17 @@ impl Ord for SemVer {
         } else {
             self
         }
+    }
+}
+
+impl FromStr for SemVer {
+    type Err = VersError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(SemVer(Version::parse(s).map_err(|e| VersError::InvalidVersionFormat(
+            SEMVER_SCHEME,
+            s.to_string(),
+            e.to_string(),
+        ))?))
     }
 }
