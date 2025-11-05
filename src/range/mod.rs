@@ -1,5 +1,5 @@
-use crate::{VersError, VersionConstraint};
 use crate::constraint::VT;
+use crate::{VersError, VersionConstraint};
 
 pub trait VersionRange<V> {
     fn versioning_scheme(&self) -> &str;
@@ -7,5 +7,5 @@ pub trait VersionRange<V> {
     fn constraints(&self) -> &Vec<VersionConstraint<impl VT>>;
 }
 
-pub mod generic;
 pub mod dynamic;
+pub mod generic;

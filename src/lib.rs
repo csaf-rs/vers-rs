@@ -1,16 +1,19 @@
 // Module declarations
-pub mod error;
 pub mod comparator;
 pub mod constraint;
-pub mod schemes;
+pub mod error;
 pub mod range;
+pub mod schemes;
 
 pub use comparator::Comparator;
 pub use constraint::VersionConstraint;
 pub use error::VersError;
 pub use range::VersionRange;
-pub use range::generic::GenericVersionRange;
 pub use range::dynamic::DynamicVersionRange;
+pub use range::generic::GenericVersionRange;
+
+use serde_wasm_bindgen;
+use wasm_bindgen::prelude::*;
 
 /// Parse a version range specifier string into a `DynamicVersionRange`.
 ///
@@ -37,6 +40,20 @@ pub use range::dynamic::DynamicVersionRange;
 /// ```
 pub fn parse(s: &str) -> Result<DynamicVersionRange, VersError> {
     s.parse()
+}
+
+/// WebAssembly-friendly wrapper around `parse`.
+///
+/// Parse and return a structured JS object describing the parsed range.
+/// On success returns an object { versioning_scheme, constraints: [{comparator, version}, ...] }
+#[wasm_bindgen]
+pub fn parse_js(s: &str) -> Result<JsValue, JsValue> {
+    match parse(s) {
+        Ok(range) => {
+            serde_wasm_bindgen::to_value(&range).map_err(|e| JsValue::from_str(&e.to_string()))
+        }
+        Err(e) => Err(JsValue::from(e)),
+    }
 }
 
 /// Check if a version string is contained within a dynamic version range.
@@ -69,8 +86,8 @@ pub fn contains(range: &DynamicVersionRange, version_str: &str) -> Result<bool, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schemes::semver::SemVer;
     use crate::VersError;
+    use crate::schemes::semver::SemVer;
 
     #[test]
     fn test_parse_simple() {
@@ -86,7 +103,10 @@ mod tests {
         let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
         assert_eq!(range.versioning_scheme(), "npm");
         assert_eq!(range.constraints().len(), 2);
-        assert_eq!(range.constraints()[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(
+            range.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
         assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
         assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
         assert_eq!(range.constraints()[1].version.to_string(), "2.0.0");
@@ -106,7 +126,10 @@ mod tests {
         let range: DynamicVersionRange = parse("vers:npm/ >= 1.0.0 | < 2.0.0 ").unwrap();
         assert_eq!(range.versioning_scheme(), "npm");
         assert_eq!(range.constraints().len(), 2);
-        assert_eq!(range.constraints()[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(
+            range.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
         assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
         assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
         assert_eq!(range.constraints()[1].version.to_string(), "2.0.0");
@@ -147,7 +170,10 @@ mod tests {
     fn test_duplicate_version() {
         let result: Result<GenericVersionRange<SemVer>, _> = "vers:npm/1.2.3|1.2.3".parse();
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), VersError::DuplicateVersion(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            VersError::DuplicateVersion(_)
+        ));
     }
 
     #[test]
@@ -172,18 +198,21 @@ mod tests {
                 VersionConstraint::new(Comparator::GreaterThan, "1.5.0".parse().unwrap()),
                 VersionConstraint::new(Comparator::LessThan, "3.0.0".parse().unwrap()),
                 VersionConstraint::new(Comparator::LessThanOrEqual, "2.0.0".parse().unwrap()),
-            ]
+            ],
         );
 
         // After normalization, validate should pass
         match range.normalize_and_validate() {
-            Ok(_) => {} ,
+            Ok(_) => {}
             Err(e) => panic!("{}", e),
         }
 
         // Check that redundant constraints were removed
         assert_eq!(range.constraints().len(), 2);
-        assert_eq!(range.constraints()[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(
+            range.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
         assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
         assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
         assert_eq!(range.constraints()[1].version.to_string(), "3.0.0");
@@ -263,7 +292,10 @@ mod tests {
     fn test_dynamic_parse_unsupported() {
         let range: Result<DynamicVersionRange, VersError> = "vers:pypi/>=1.0.0|<2.0.0".parse();
         assert!(range.is_err());
-        assert!(matches!(range.unwrap_err(), VersError::UnsupportedVersioningScheme(_)));
+        assert!(matches!(
+            range.unwrap_err(),
+            VersError::UnsupportedVersioningScheme(_)
+        ));
     }
 
     #[test]
@@ -279,7 +311,10 @@ mod tests {
         let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
         let result = range.contains("invalid.version");
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), VersError::InvalidVersionFormat(..)));
+        assert!(matches!(
+            result.unwrap_err(),
+            VersError::InvalidVersionFormat(..)
+        ));
     }
 
     #[test]

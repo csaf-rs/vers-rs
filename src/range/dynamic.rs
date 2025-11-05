@@ -194,3 +194,14 @@ impl Display for DynamicVersionRange {
         }
     }
 }
+
+impl serde::ser::Serialize for DynamicVersionRange {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        match self {
+            DynamicVersionRange::SemVer(range) => range.serialize(serializer),
+        }
+    }
+}
