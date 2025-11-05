@@ -14,10 +14,10 @@ use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
 /// A trait alias for version types that can be used in version constraints and ranges.
-pub trait VT: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
+pub trait VersionType: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
 
 // Blanket implementation for any type that satisfies the bounds
-impl<T> VT for T where T: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
+impl<T> VersionType for T where T: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
 
 /// A single version constraint with a comparator and version.
 ///
@@ -32,7 +32,7 @@ impl<T> VT for T where T: FromStr + Default + Ord + Clone + Display + Debug + Se
 /// - `!=1.2.3` (not equal)
 /// - `*` (any version)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct VersionConstraint<V: VT> {
+pub struct VersionConstraint<V: VersionType> {
     /// The comparator for this constraint
     pub comparator: Comparator,
 
@@ -40,7 +40,7 @@ pub struct VersionConstraint<V: VT> {
     pub version: V,
 }
 
-impl<V: VT> VersionConstraint<V> {
+impl<V: VersionType> VersionConstraint<V> {
     /// Create a new version constraint with the given comparator and version.
     ///
     /// # Arguments

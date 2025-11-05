@@ -1,4 +1,4 @@
-use crate::constraint::VT;
+use crate::constraint::VersionType;
 use crate::range::VersionRange;
 use crate::schemes::semver::SemVer;
 use crate::{GenericVersionRange, VersError, VersionConstraint};
@@ -141,7 +141,7 @@ impl VersionRange<&str> for DynamicVersionRange {
     /// let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
     /// assert_eq!(range.constraints().len(), 2);
     /// ```
-    fn constraints(&self) -> &Vec<VersionConstraint<impl VT>> {
+    fn constraints(&self) -> &Vec<VersionConstraint<impl VersionType>> {
         match self {
             DynamicVersionRange::SemVer(range) => &range.constraints,
         }

@@ -23,7 +23,7 @@
 
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
-use crate::constraint::VT;
+use crate::constraint::VersionType;
 use crate::error::VersError;
 use crate::range::VersionRange;
 use serde::Serialize;
@@ -44,7 +44,7 @@ use std::str::FromStr;
 /// - `vers:npm/>=1.0.0|<2.0.0` (a range of versions)
 /// - `vers:pypi/*` (any version)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct GenericVersionRange<V: VT> {
+pub struct GenericVersionRange<V: VersionType> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
     pub versioning_scheme: String,
 
@@ -52,7 +52,7 @@ pub struct GenericVersionRange<V: VT> {
     pub constraints: Vec<VersionConstraint<V>>,
 }
 
-impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
+impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
     /// Get the versioning scheme used by this range.
     ///
     /// # Returns
@@ -176,12 +176,12 @@ impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
         Ok(false)
     }
 
-    fn constraints(&self) -> &Vec<VersionConstraint<impl VT>> {
+    fn constraints(&self) -> &Vec<VersionConstraint<impl VersionType>> {
         &self.constraints
     }
 }
 
-impl<V: VT> GenericVersionRange<V> {
+impl<V: VersionType> GenericVersionRange<V> {
     /// Create a new version range with the given versioning scheme and constraints.
     ///
     /// # Arguments
@@ -377,7 +377,7 @@ impl<V: VT> GenericVersionRange<V> {
     }
 }
 
-impl<V: VT> FromStr for GenericVersionRange<V> {
+impl<V: VersionType> FromStr for GenericVersionRange<V> {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -450,7 +450,7 @@ impl<V: VT> FromStr for GenericVersionRange<V> {
     }
 }
 
-impl<V: VT> Display for GenericVersionRange<V> {
+impl<V: VersionType> Display for GenericVersionRange<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "vers:{}/", self.versioning_scheme)?;
 

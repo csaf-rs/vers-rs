@@ -4,8 +4,10 @@
 //! The main error type is `VersError`, which represents all possible
 //! errors that can occur when working with version range specifiers.
 
+#[cfg(feature = "wasm")]
 use js_sys::Error as JsError;
 use thiserror::Error;
+#[cfg(feature = "wasm")]
 use wasm_bindgen::JsValue;
 
 /// Errors that can occur when working with version range specifiers.
@@ -43,6 +45,7 @@ pub enum VersError {
 }
 
 /// Convert VersError into a JS exception value when targeting wasm.
+#[cfg(feature = "wasm")]
 impl From<VersError> for JsValue {
     fn from(e: VersError) -> JsValue {
         JsValue::from(JsError::new(&e.to_string()))

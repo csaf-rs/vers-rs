@@ -16,6 +16,11 @@ All commands should be run from the repository root.
    wasm-pack build --target web
    ```
 
+   If you've disabled default features in `Cargo.toml`, you can explicitly enable the wasm feature:
+   ```bash
+   wasm-pack build --target web -- --features wasm
+   ```
+
    This produces a `pkg/` directory containing `vers_rs.js` and the wasm file.
 
 3. Serve the `www/` folder from a static web server. For example:
