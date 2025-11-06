@@ -1,0 +1,35 @@
+# vers-rs WASM demo
+
+This demo shows how to use the vers-rs wasm bindings from a simple web page.
+
+## Build steps
+
+All commands should be run from the repository root.
+
+1. Install wasm-pack if you don't have it:
+   ```bash
+   cargo install wasm-pack
+   ```
+
+2. Build the wasm package for the web (you might need to include `~/.cargo/bin/` in your `$PATH`):
+   ```bash
+   wasm-pack build --target web --out-dir www/pkg
+   ```
+
+   If you've disabled default features in `Cargo.toml`, you can explicitly enable the wasm feature:
+   ```bash
+   wasm-pack build --target web --out-dir www/pkg -- --features wasm
+   ```
+
+   This produces a `www/pkg/` directory containing `vers_rs.js` and the wasm file.
+
+3. Serve the `www/` folder from a static web server. For example:
+   ```bash
+   python3 -m http.server --directory www 8000
+   ```
+
+4. Open http://localhost:8000 in your browser.
+
+## Notes
+- The demo imports `./pkg/vers_rs.js` from the `www/` directory.
+- If you bundle differently (rollup/webpack/Vite), adapt the import path accordingly.

@@ -1,12 +1,13 @@
 use crate::VersError;
 use derive_more::Display;
 use semver::Version;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::str::FromStr;
 
 pub static SEMVER_SCHEME: &str = "semver/npm";
 
-#[derive(Display, Clone, Debug, PartialEq, Eq, PartialOrd)]
+#[derive(Display, Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
 pub struct SemVer(Version);
 
 impl Default for SemVer {
@@ -22,29 +23,21 @@ impl Ord for SemVer {
 
     fn max(self, other: Self) -> Self
     where
-        Self: Sized
+        Self: Sized,
     {
-        if self.0 >= other.0 {
-            self
-        } else {
-            other
-        }
+        if self.0 >= other.0 { self } else { other }
     }
 
     fn min(self, other: Self) -> Self
     where
-        Self: Sized
+        Self: Sized,
     {
-        if self.0 <= other.0 {
-            self
-        } else {
-            other
-        }
+        if self.0 <= other.0 { self } else { other }
     }
 
     fn clamp(self, min: Self, max: Self) -> Self
     where
-        Self: Sized
+        Self: Sized,
     {
         if self.0 < min.0 {
             min
@@ -60,10 +53,8 @@ impl FromStr for SemVer {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(SemVer(Version::parse(s).map_err(|e| VersError::InvalidVersionFormat(
-            SEMVER_SCHEME,
-            s.to_string(),
-            e.to_string(),
-        ))?))
+        Ok(SemVer(Version::parse(s).map_err(|e| {
+            VersError::InvalidVersionFormat(SEMVER_SCHEME, s.to_string(), e.to_string())
+        })?))
     }
 }

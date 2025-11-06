@@ -21,15 +21,16 @@
 //! It also implements `FromStr` for parsing a string into a `VersionRange` and
 //! `Display` for converting a `VersionRange` back to a string.
 
-use crate::comparator::Comparator::*;
-use crate::constraint::VT;
-use crate::error::VersError;
 use crate::VersionConstraint;
+use crate::comparator::Comparator::*;
+use crate::constraint::VersionType;
+use crate::error::VersError;
+use crate::range::VersionRange;
+use serde::Serialize;
 use std::collections::LinkedList;
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
-use crate::range::VersionRange;
 
 /// A version range specifier.
 ///
@@ -42,16 +43,16 @@ use crate::range::VersionRange;
 /// - `vers:npm/1.2.3` (a single version)
 /// - `vers:npm/>=1.0.0|<2.0.0` (a range of versions)
 /// - `vers:pypi/*` (any version)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GenericVersionRange<V : VT> {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GenericVersionRange<V: VersionType> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
     pub versioning_scheme: String,
-    
+
     /// The list of version constraints
     pub constraints: Vec<VersionConstraint<V>>,
 }
 
-impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
+impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
     /// Get the versioning scheme used by this range.
     ///
     /// # Returns
@@ -105,12 +106,12 @@ impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
                     if version == &constraint.version {
                         return Ok(true);
                     }
-                },
+                }
                 NotEqual => {
                     if version == &constraint.version {
                         return Ok(false);
                     }
-                },
+                }
                 _ => {}
             }
         }
@@ -122,7 +123,9 @@ impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
         }
 
         // Get range constraints
-        let mut range_iterator = self.constraints.iter()
+        let mut range_iterator = self
+            .constraints
+            .iter()
             .filter(|c| {
                 matches!(
                     c.comparator,
@@ -137,8 +140,8 @@ impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
             // If this is the first iteration and the current comparator is "<" or "<="
             // and the tested version is less than the current version
             if first {
-                if (current.comparator == LessThan || current.comparator == LessThanOrEqual) &&
-                    version < &current.version
+                if (current.comparator == LessThan || current.comparator == LessThanOrEqual)
+                    && version < &current.version
                 {
                     return Ok(true);
                 }
@@ -147,9 +150,9 @@ impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
 
             // If this is the last iteration and the current comparator is ">" or ">="
             // and the tested version is greater than the current version
-            if range_iterator.peek().is_none() &&
-                (current.comparator == GreaterThan || current.comparator == GreaterThanOrEqual) &&
-                version > &current.version
+            if range_iterator.peek().is_none()
+                && (current.comparator == GreaterThan || current.comparator == GreaterThanOrEqual)
+                && version > &current.version
             {
                 return Ok(true);
             }
@@ -162,7 +165,8 @@ impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
                 if matches!(current.comparator, GreaterThan | GreaterThanOrEqual)
                     && version > &current.version
                     && matches!(next.comparator, LessThan | LessThanOrEqual)
-                    && version < &next.version {
+                    && version < &next.version
+                {
                     return Ok(true);
                 }
             }
@@ -172,12 +176,12 @@ impl<V: VT> VersionRange<&V> for GenericVersionRange<V> {
         Ok(false)
     }
 
-    fn constraints(&self) -> &Vec<VersionConstraint<impl VT>> {
+    fn constraints(&self) -> &Vec<VersionConstraint<impl VersionType>> {
         &self.constraints
     }
 }
 
-impl<V : VT> GenericVersionRange<V> {
+impl<V: VersionType> GenericVersionRange<V> {
     /// Create a new version range with the given versioning scheme and constraints.
     ///
     /// # Arguments
@@ -189,7 +193,10 @@ impl<V : VT> GenericVersionRange<V> {
     ///
     /// A new `VersionRange` instance
     pub fn new(versioning_scheme: String, constraints: Vec<VersionConstraint<V>>) -> Self {
-        Self { versioning_scheme, constraints }
+        Self {
+            versioning_scheme,
+            constraints,
+        }
     }
 
     /// Normalize and validate the version range in a single operation.
@@ -209,7 +216,9 @@ impl<V : VT> GenericVersionRange<V> {
         // Check for star constraint
         let has_star = self.constraints.iter().any(|c| c.comparator == Any);
         if has_star && self.constraints.len() > 1 {
-            return Err(VersError::InvalidRange("Star constraint must be used alone".to_string()));
+            return Err(VersError::InvalidRange(
+                "Star constraint must be used alone".to_string(),
+            ));
         }
 
         // If there's only one constraint, no need for further validation
@@ -222,7 +231,9 @@ impl<V : VT> GenericVersionRange<V> {
         // Check for duplicate versions, exploiting sorted order
         for i in 1..self.constraints.len() {
             if self.constraints[i].version == self.constraints[i - 1].version {
-                return Err(VersError::DuplicateVersion(self.constraints[i].version.to_string()));
+                return Err(VersError::DuplicateVersion(
+                    self.constraints[i].version.to_string(),
+                ));
             }
         }
 
@@ -254,13 +265,9 @@ impl<V : VT> GenericVersionRange<V> {
             if let Some(next) = other_constraints.front() {
                 // If the current comparator is ">" or ">=" and next comparator is "=", ">" or ">=",
                 // discard the next constraint
-                if matches!(
-                    current.comparator,
-                    GreaterThan | GreaterThanOrEqual
-                ) && matches!(
-                    next.comparator,
-                    GreaterThan | GreaterThanOrEqual | Equal
-                ) {
+                if matches!(current.comparator, GreaterThan | GreaterThanOrEqual)
+                    && matches!(next.comparator, GreaterThan | GreaterThanOrEqual | Equal)
+                {
                     // Discard the next constraint
                     other_constraints.pop_front();
                     // Re-evaluate, keeping the current constraint (re-add)
@@ -271,7 +278,8 @@ impl<V : VT> GenericVersionRange<V> {
                 // If the current comparator is "=", "<" or "<=" and next comparator is <" or <=",
                 // discard the current constraint
                 if matches!(current.comparator, Equal | LessThan | LessThanOrEqual)
-                    && matches!(next.comparator, LessThan | LessThanOrEqual) {
+                    && matches!(next.comparator, LessThan | LessThanOrEqual)
+                {
                     // Previous constraint becomes current if it exists
                     if let Some(previous) = filtered_constraints.pop() {
                         other_constraints.push_front(previous);
@@ -279,13 +287,13 @@ impl<V : VT> GenericVersionRange<V> {
                     continue;
                 }
 
-
                 // Check the previous constraint if it exists
                 if let Some(previous) = filtered_constraints.last() {
                     // If the previous comparator is ">" or ">=" and current comparator
                     // is "=", ">" or ">=", discard the current constraint
                     if matches!(previous.comparator, GreaterThan | GreaterThanOrEqual)
-                        && matches!(current.comparator, GreaterThan | GreaterThanOrEqual | Equal) {
+                        && matches!(current.comparator, GreaterThan | GreaterThanOrEqual | Equal)
+                    {
                         // Discard the current constraint
                         continue;
                     }
@@ -293,7 +301,8 @@ impl<V : VT> GenericVersionRange<V> {
                     // If the previous comparator is "=", "<" or "<=" and current comparator
                     // is "<" or "<=", discard the previous constraint
                     if matches!(previous.comparator, Equal | LessThan | LessThanOrEqual)
-                        && matches!(current.comparator, LessThan | LessThanOrEqual) {
+                        && matches!(current.comparator, LessThan | LessThanOrEqual)
+                    {
                         // Discard the previous constraint
                         filtered_constraints.pop();
                     }
@@ -306,19 +315,15 @@ impl<V : VT> GenericVersionRange<V> {
         // Ignoring all constraints with "!=" comparators:
         // A "=" constraint must be followed only by a constraint with one of "=", ">", ">="
         // as comparator (or no constraint).
-        let mut filter_iter = filtered_constraints
-            .iter()
-            .map(|c| c.comparator)
-            .peekable();
+        let mut filter_iter = filtered_constraints.iter().map(|c| c.comparator).peekable();
         while let Some(current) = filter_iter.next() {
             if let Some(next) = filter_iter.peek() {
                 if current == Equal && !matches!(*next, Equal | GreaterThan | GreaterThanOrEqual) {
                     return Err(VersError::InvalidRange(format!(
                         "\"{}\" must not be followed by \"{}\" in a normalized range \
                         (ignoring \"!=\")",
-                        current,
-                        next,
-                    )))
+                        current, next,
+                    )));
                 }
             }
         }
@@ -334,29 +339,27 @@ impl<V : VT> GenericVersionRange<V> {
             if let Some(next) = filter_iter.peek() {
                 match current {
                     // "<" and "<=" must be followed by one of ">", ">=" (or no constraint).
-                    LessThan | LessThanOrEqual => {
-                        match next {
-                            GreaterThan | GreaterThanOrEqual => {},
-                            _ => return Err(VersError::InvalidRange(format!(
+                    LessThan | LessThanOrEqual => match next {
+                        GreaterThan | GreaterThanOrEqual => {}
+                        _ => {
+                            return Err(VersError::InvalidRange(format!(
                                 "\"{}\" must not be followed by \"{}\" in a normalized range \
                                 (ignoring \"!=\" and \"=\")",
-                                current,
-                                next,
-                            )))
+                                current, next,
+                            )));
                         }
-                    }
+                    },
                     // ">" and ">=" must be followed by one of "<", "<=" (or no constraint).
-                    GreaterThan | GreaterThanOrEqual => {
-                        match next {
-                            LessThan | LessThanOrEqual => {},
-                            _ => return Err(VersError::InvalidRange(format!(
+                    GreaterThan | GreaterThanOrEqual => match next {
+                        LessThan | LessThanOrEqual => {}
+                        _ => {
+                            return Err(VersError::InvalidRange(format!(
                                 "\"{}\" must not be followed by \"{}\" in a normalized range \
                                 (ignoring \"!=\" and \"=\")",
-                                current,
-                                next,
-                            )))
+                                current, next,
+                            )));
                         }
-                    }
+                    },
                     _ => {}
                 }
             }
@@ -374,43 +377,43 @@ impl<V : VT> GenericVersionRange<V> {
     }
 }
 
-impl<V : VT> FromStr for GenericVersionRange<V> {
+impl<V: VersionType> FromStr for GenericVersionRange<V> {
     type Err = VersError;
-    
+
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Remove all spaces and tabs
         let s = s.replace(|c: char| c.is_whitespace(), "");
-        
+
         // Split on colon
         let parts: Vec<&str> = s.splitn(2, ':').collect();
         if parts.len() != 2 {
             return Err(VersError::InvalidScheme);
         }
-        
+
         // Validate URI scheme
         let scheme = parts[0];
         if scheme != "vers" {
             return Err(VersError::InvalidScheme);
         }
-        
+
         // Split on slash
         let specifier_parts: Vec<&str> = parts[1].splitn(2, '/').collect();
         if specifier_parts.len() != 2 {
             return Err(VersError::MissingVersioningScheme);
         }
-        
+
         // Get versioning scheme
         let versioning_scheme = specifier_parts[0].to_lowercase();
         if versioning_scheme.is_empty() {
             return Err(VersError::MissingVersioningScheme);
         }
-        
+
         // Get constraint string
         let constraints_str = specifier_parts[1].trim();
         if constraints_str.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
-        
+
         // Handle star constraint
         if constraints_str == "*" {
             return Ok(Self {
@@ -418,14 +421,14 @@ impl<V : VT> FromStr for GenericVersionRange<V> {
                 constraints: vec![VersionConstraint::new(Any, V::default())],
             });
         }
-        
+
         // Split constraints on each pipe
         let constraint_strs: Vec<&str> = constraints_str
             .trim_matches('|')
             .split('|')
             .filter(|s| !s.is_empty())
             .collect();
-        
+
         if constraint_strs.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
@@ -436,22 +439,29 @@ impl<V : VT> FromStr for GenericVersionRange<V> {
             let constraint = VersionConstraint::<V>::parse(constraint_str)?;
             constraints.push(constraint);
         }
-        
-        let mut range = Self { versioning_scheme, constraints };
-        range.normalize_and_validate()?;  // Use the combined function
-        
+
+        let mut range = Self {
+            versioning_scheme,
+            constraints,
+        };
+        range.normalize_and_validate()?; // Use the combined function
+
         Ok(range)
     }
 }
 
-impl<V : VT> Display for GenericVersionRange<V> {
+impl<V: VersionType> Display for GenericVersionRange<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "vers:{}/", self.versioning_scheme)?;
 
         match self.constraints[0].comparator {
             Any => write!(f, "*")?,
             Equal => write!(f, "{}", self.constraints[0].version)?,
-            _ => write!(f, "{}{}", self.constraints[0].comparator, self.constraints[0].version)?,
+            _ => write!(
+                f,
+                "{}{}",
+                self.constraints[0].comparator, self.constraints[0].version
+            )?,
         }
 
         for constraint in &self.constraints[1..] {
@@ -460,7 +470,7 @@ impl<V : VT> Display for GenericVersionRange<V> {
                 _ => write!(f, "|{}{}", constraint.comparator, constraint.version)?,
             }
         }
-        
+
         Ok(())
     }
 }

@@ -7,16 +7,17 @@
 //! and a version string. It defines a condition that a version must satisfy to be
 //! considered within a version range.
 
+use crate::{Comparator, VersError};
+use percent_encoding::percent_decode_str;
+use serde::Serialize;
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
-use percent_encoding::percent_decode_str;
-use crate::{Comparator, VersError};
 
 /// A trait alias for version types that can be used in version constraints and ranges.
-pub trait VT: FromStr + Default + Ord + Clone + Display + Debug {}
+pub trait VersionType: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
 
 // Blanket implementation for any type that satisfies the bounds
-impl<T> VT for T where T: FromStr + Default + Ord + Clone + Display + Debug {}
+impl<T> VersionType for T where T: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
 
 /// A single version constraint with a comparator and version.
 ///
@@ -30,8 +31,8 @@ impl<T> VT for T where T: FromStr + Default + Ord + Clone + Display + Debug {}
 /// - `<2.0.0` (less than)
 /// - `!=1.2.3` (not equal)
 /// - `*` (any version)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VersionConstraint<V : VT> {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct VersionConstraint<V: VersionType> {
     /// The comparator for this constraint
     pub comparator: Comparator,
 
@@ -39,7 +40,7 @@ pub struct VersionConstraint<V : VT> {
     pub version: V,
 }
 
-impl<V : VT> VersionConstraint<V> {
+impl<V: VersionType> VersionConstraint<V> {
     /// Create a new version constraint with the given comparator and version.
     ///
     /// # Arguments
@@ -51,7 +52,10 @@ impl<V : VT> VersionConstraint<V> {
     ///
     /// A new `VersionConstraint` instance
     pub fn new(comparator: Comparator, version: V) -> Self {
-        Self { comparator, version }
+        Self {
+            comparator,
+            version,
+        }
     }
 
     /// Parse a version constraint string into a `VersionConstraint`.
@@ -112,15 +116,24 @@ impl<V : VT> VersionConstraint<V> {
         let version_str = if version.contains('%') {
             match percent_decode_str(version).decode_utf8() {
                 Ok(decoded) => decoded.to_string(),
-                Err(_) => return Err(VersError::InvalidConstraint(format!("Invalid URL encoding: {}", version))),
+                Err(_) => {
+                    return Err(VersError::InvalidConstraint(format!(
+                        "Invalid URL encoding: {}",
+                        version
+                    )));
+                }
             }
         } else {
             version.to_string()
         };
 
-        let parsed_version = version_str.parse::<V>()
-            .map_err(|_| VersError::InvalidConstraint(format!("Failed to parse version: {}", version_str)))?;
+        let parsed_version = version_str.parse::<V>().map_err(|_| {
+            VersError::InvalidConstraint(format!("Failed to parse version: {}", version_str))
+        })?;
 
-        Ok(Self { comparator, version: parsed_version })
+        Ok(Self {
+            comparator,
+            version: parsed_version,
+        })
     }
 }
