@@ -1,6 +1,6 @@
 // Simple demo script that loads the generated wasm pkg and wires up UI
 // When serving the `www/` folder directly, import the pkg from ./pkg
-import init, { parse_js } from './pkg/vers_rs.js';
+import init, { parse } from './pkg/vers_rs.js';
 
 async function run() {
   await init();
@@ -14,7 +14,7 @@ async function run() {
 
   document.getElementById('btn-string').addEventListener('click', async () => {
     try {
-      const s = await parse_js(rangeEl.value);
+      const s = await parse(rangeEl.value);
       show(s);
     } catch (e) {
       show('Error: ' + (e && e.message ? e.message : String(e)));

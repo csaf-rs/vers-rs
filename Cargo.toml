@@ -13,7 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = ["wasm"]
-wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:serde-wasm-bindgen"]
+wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:tsify", "dep:serde-wasm-bindgen"]
 
 [dependencies]
 thiserror = "2"
@@ -21,6 +21,7 @@ percent-encoding = "2"
 semver = { version = "1", features = ["serde"] }
 derive_more = { version = "2", features = ["from_str", "display"] }
 wasm-bindgen = { version = "0.2.104", optional = true }
-js-sys = { version = "0.3", optional = true }
+js-sys = { version = "*", optional = true }
+tsify = { version = "*", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = { version = "0.5", optional = true }

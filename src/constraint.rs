@@ -9,7 +9,8 @@
 
 use crate::{Comparator, VersError};
 use percent_encoding::percent_decode_str;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use tsify::Tsify;
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
@@ -31,7 +32,7 @@ impl<T> VersionType for T where T: FromStr + Default + Ord + Clone + Display + D
 /// - `<2.0.0` (less than)
 /// - `!=1.2.3` (not equal)
 /// - `*` (any version)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 pub struct VersionConstraint<V: VersionType> {
     /// The comparator for this constraint
     pub comparator: Comparator,

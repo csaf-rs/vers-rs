@@ -13,8 +13,6 @@ pub use range::dynamic::DynamicVersionRange;
 pub use range::generic::GenericVersionRange;
 
 #[cfg(feature = "wasm")]
-use serde_wasm_bindgen;
-#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
 /// Parse a version range specifier string into a `DynamicVersionRange`.
@@ -40,23 +38,9 @@ use wasm_bindgen::prelude::*;
 /// assert_eq!(range.versioning_scheme(), "npm");
 /// assert_eq!(range.constraints().len(), 2);
 /// ```
+#[wasm_bindgen]
 pub fn parse(s: &str) -> Result<DynamicVersionRange, VersError> {
     s.parse()
-}
-
-/// WebAssembly-friendly wrapper around `parse`.
-///
-/// Parse and return a structured JS object describing the parsed range.
-/// On success returns an object { versioning_scheme, constraints: [{comparator, version}, ...] }
-#[cfg(feature = "wasm")]
-#[wasm_bindgen]
-pub fn parse_js(s: &str) -> Result<JsValue, JsValue> {
-    match parse(s) {
-        Ok(range) => {
-            serde_wasm_bindgen::to_value(&range).map_err(|e| JsValue::from_str(&e.to_string()))
-        }
-        Err(e) => Err(JsValue::from(e)),
-    }
 }
 
 /// Check if a version string is contained within a dynamic version range.
