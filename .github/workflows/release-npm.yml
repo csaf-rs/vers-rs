@@ -30,5 +30,4 @@ jobs:
       - name: Publish pkg to npm with provenance
         working-directory: pkg
         run: |
-          npm ci
           npm publish --provenance
