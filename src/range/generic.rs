@@ -52,7 +52,7 @@ pub struct GenericVersionRange<V: VersionType> {
     pub constraints: Vec<VersionConstraint<V>>,
 }
 
-impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
+impl<V: VersionType> VersionRange<V> for GenericVersionRange<V> {
     /// Get the versioning scheme used by this range.
     ///
     /// # Returns
@@ -90,10 +90,10 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
     /// use vers_rs::schemes::semver::SemVer;
     ///
     /// let range = "vers:npm/>=1.0.0|<2.0.0".parse::<GenericVersionRange<SemVer>>().unwrap();
-    /// assert!(range.contains(&"1.5.0".parse().unwrap()).unwrap());
-    /// assert!(!range.contains(&"2.0.0".parse().unwrap()).unwrap());
+    /// assert!(range.contains("1.5.0".parse().unwrap()).unwrap());
+    /// assert!(!range.contains("2.0.0".parse().unwrap()).unwrap());
     /// ```
-    fn contains(&self, version: &V) -> Result<bool, VersError> {
+    fn contains(&self, version: V) -> Result<bool, VersError> {
         // If the constraint list contains only "*", then the version is in the range
         if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
             return Ok(true);
@@ -103,12 +103,12 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
         for constraint in &self.constraints {
             match constraint.comparator {
                 Equal | GreaterThanOrEqual | LessThanOrEqual => {
-                    if version == &constraint.version {
+                    if version == constraint.version {
                         return Ok(true);
                     }
                 }
                 NotEqual => {
-                    if version == &constraint.version {
+                    if version == constraint.version {
                         return Ok(false);
                     }
                 }
@@ -141,7 +141,7 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
             // and the tested version is less than the current version
             if first {
                 if (current.comparator == LessThan || current.comparator == LessThanOrEqual)
-                    && version < &current.version
+                    && version < current.version
                 {
                     return Ok(true);
                 }
@@ -152,7 +152,7 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
             // and the tested version is greater than the current version
             if range_iterator.peek().is_none()
                 && (current.comparator == GreaterThan || current.comparator == GreaterThanOrEqual)
-                && version > &current.version
+                && version > current.version
             {
                 return Ok(true);
             }
@@ -163,9 +163,9 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
                 // and the tested version is greater than the current version
                 // and the tested version is less than the next version
                 if matches!(current.comparator, GreaterThan | GreaterThanOrEqual)
-                    && version > &current.version
+                    && version > current.version
                     && matches!(next.comparator, LessThan | LessThanOrEqual)
-                    && version < &next.version
+                    && version < next.version
                 {
                     return Ok(true);
                 }
@@ -176,7 +176,7 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
         Ok(false)
     }
 
-    fn constraints(&self) -> &Vec<VersionConstraint<impl VersionType>> {
+    fn constraints(&self) -> &Vec<VersionConstraint<V>> {
         &self.constraints
     }
 }

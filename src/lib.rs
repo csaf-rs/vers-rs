@@ -8,9 +8,9 @@ pub mod schemes;
 pub use comparator::Comparator;
 pub use constraint::VersionConstraint;
 pub use error::VersError;
-pub use range::VersionRange;
 pub use range::dynamic::DynamicVersionRange;
 pub use range::generic::GenericVersionRange;
+pub use range::VersionRange;
 
 #[cfg(feature = "wasm")]
 use serde_wasm_bindgen;
@@ -79,18 +79,18 @@ pub fn parse_js(s: &str) -> Result<JsValue, JsValue> {
 /// use vers_rs::{parse, contains};
 ///
 /// let range = parse("vers:npm/>=1.0.0|<2.0.0").unwrap();
-/// assert!(contains(&range, "1.5.0").unwrap());
-/// assert!(!contains(&range, "2.0.0").unwrap());
+/// assert!(contains(&range, "1.5.0".to_string()).unwrap());
+/// assert!(!contains(&range, "2.0.0".to_string()).unwrap());
 /// ```
-pub fn contains(range: &DynamicVersionRange, version_str: &str) -> Result<bool, VersError> {
+pub fn contains(range: &DynamicVersionRange, version_str: String) -> Result<bool, VersError> {
     range.contains(version_str)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::VersError;
     use crate::schemes::semver::SemVer;
+    use crate::VersError;
 
     #[test]
     fn test_parse_simple() {
@@ -224,43 +224,43 @@ mod tests {
     #[test]
     fn test_contains_simple() {
         let range: DynamicVersionRange = parse("vers:npm/1.2.3").unwrap();
-        assert!(contains(&range, "1.2.3").unwrap());
-        assert!(!contains(&range, "1.2.4").unwrap());
+        assert!(contains(&range, "1.2.3".to_string()).unwrap());
+        assert!(!contains(&range, "1.2.4".to_string()).unwrap());
     }
 
     #[test]
     fn test_contains_range() {
         let range: DynamicVersionRange = parse("vers:npm/>=1.0.0|<2.0.0").unwrap();
-        assert!(contains(&range, "1.0.0").unwrap());
-        assert!(contains(&range, "1.5.0").unwrap());
-        assert!(!contains(&range, "2.0.0").unwrap());
-        assert!(!contains(&range, "0.9.0").unwrap());
+        assert!(contains(&range, "1.0.0".to_string()).unwrap());
+        assert!(contains(&range, "1.5.0".to_string()).unwrap());
+        assert!(!contains(&range, "2.0.0".to_string()).unwrap());
+        assert!(!contains(&range, "0.9.0".to_string()).unwrap());
     }
 
     #[test]
     fn test_contains_star() {
         let range: DynamicVersionRange = parse("vers:npm/*").unwrap();
-        assert!(contains(&range, "1.0.0").unwrap());
-        assert!(contains(&range, "2.0.0").unwrap());
-        assert!(contains(&range, "0.0.1").unwrap());
+        assert!(contains(&range, "1.0.0".to_string()).unwrap());
+        assert!(contains(&range, "2.0.0".to_string()).unwrap());
+        assert!(contains(&range, "0.0.1".to_string()).unwrap());
     }
 
     #[test]
     fn test_contains_not_equal() {
         let range: DynamicVersionRange = parse("vers:npm/!=1.2.3").unwrap();
-        assert!(!contains(&range, "1.2.3").unwrap());
-        assert!(contains(&range, "1.2.4").unwrap());
+        assert!(!contains(&range, "1.2.3".to_string()).unwrap());
+        assert!(contains(&range, "1.2.4".to_string()).unwrap());
     }
 
     #[test]
     fn test_contains_complex() {
         // Test a complex range with multiple constraints
         let range: DynamicVersionRange = parse("vers:npm/>=1.0.0|<2.0.0|!=1.5.0").unwrap();
-        assert!(contains(&range, "1.0.0").unwrap());
-        assert!(contains(&range, "1.7.0").unwrap());
-        assert!(!contains(&range, "1.5.0").unwrap());
-        assert!(!contains(&range, "2.0.0").unwrap());
-        assert!(!contains(&range, "0.9.0").unwrap());
+        assert!(contains(&range, "1.0.0".to_string()).unwrap());
+        assert!(contains(&range, "1.7.0".to_string()).unwrap());
+        assert!(!contains(&range, "1.5.0".to_string()).unwrap());
+        assert!(!contains(&range, "2.0.0".to_string()).unwrap());
+        assert!(!contains(&range, "0.9.0".to_string()).unwrap());
     }
 
     #[test]
@@ -292,6 +292,34 @@ mod tests {
     }
 
     #[test]
+    fn test_dynamic_parse_deb() {
+        let range: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        assert_eq!(range.versioning_scheme(), "deb");
+        assert_eq!(range.constraints().len(), 1);
+        assert_eq!(range.constraints()[0].comparator, Comparator::LessThan);
+        assert_eq!(range.constraints()[0].version.to_string(), "1.0");
+    }
+
+    #[test]
+    fn test_deb_version_ordering_basic() {
+        let range: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        assert!(contains(&range, "0.9".to_string()).unwrap());
+        assert!(!contains(&range, "1.0".to_string()).unwrap());
+    }
+
+    #[test]
+    fn test_deb_version_ordering_tilde_and_epoch() {
+        // 1.0~beta < 1.0
+        let range1: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        assert!(contains(&range1, "1.0~beta".to_string()).unwrap());
+
+        // 1:1.0 > 2.0 because epoch 1 > 0
+        let range2: DynamicVersionRange = "vers:deb/>>2.0".parse().unwrap();
+        assert!(contains(&range2, "1:1.0".to_string()).unwrap());
+        assert!(!contains(&range2, "2.0".to_string()).unwrap());
+    }
+
+    #[test]
     fn test_dynamic_parse_unsupported() {
         let range: Result<DynamicVersionRange, VersError> = "vers:pypi/>=1.0.0|<2.0.0".parse();
         assert!(range.is_err());
@@ -304,15 +332,15 @@ mod tests {
     #[test]
     fn test_dynamic_contains() {
         let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
-        assert!(range.contains("1.5.0").unwrap());
-        assert!(!range.contains("2.0.0").unwrap());
-        assert!(!range.contains("0.9.0").unwrap());
+        assert!(range.contains("1.5.0".to_string()).unwrap());
+        assert!(!range.contains("2.0.0".to_string()).unwrap());
+        assert!(!range.contains("0.9.0".to_string()).unwrap());
     }
 
     #[test]
     fn test_dynamic_contains_invalid_version() {
         let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
-        let result = range.contains("invalid.version");
+        let result = range.contains("invalid.version".to_string());
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),

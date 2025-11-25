@@ -1,10 +1,20 @@
-use crate::constraint::VersionType;
 use crate::range::VersionRange;
 use crate::schemes::semver::SemVer;
+use crate::schemes::deb::DebVersion;
 use crate::{GenericVersionRange, VersError, VersionConstraint};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
+use std::sync::OnceLock;
+
+/// Internal enum for the actual version range implementation
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DynamicVersionRangeInner {
+    /// SemVer-based range (for "semver" and "npm" schemes)
+    SemVer(GenericVersionRange<SemVer>),
+    /// Debian dpkg-style versioning ("deb" scheme)
+    Deb(GenericVersionRange<DebVersion>),
+}
 
 /// A dynamic version range that automatically detects the versioning scheme.
 ///
@@ -26,13 +36,42 @@ use std::str::FromStr;
 /// let semver_range: DynamicVersionRange = "vers:semver/>=1.0.0|<2.0.0".parse().unwrap();
 ///
 /// // Check if versions are contained
-/// assert!(npm_range.contains("1.5.0").unwrap());
-/// assert!(!npm_range.contains("2.0.0").unwrap());
+/// assert!(npm_range.contains("1.5.0".to_string()).unwrap());
+/// assert!(!semver_range.contains("2.0.0".to_string()).unwrap());
 /// ```
-#[derive(PartialEq, Eq, Debug, Clone)]
-pub enum DynamicVersionRange {
-    /// SemVer-based range (for "semver" and "npm" schemes)
-    SemVer(GenericVersionRange<SemVer>),
+#[derive(Debug)]
+pub struct DynamicVersionRange {
+    inner: DynamicVersionRangeInner,
+    cached_constraints: OnceLock<Vec<VersionConstraint<String>>>,
+}
+
+// Custom PartialEq and Eq implementations that only compare the inner range, not the cache
+impl PartialEq for DynamicVersionRange {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl Eq for DynamicVersionRange {}
+
+// Custom Clone implementation that clones the inner range but not the cache
+impl Clone for DynamicVersionRange {
+    fn clone(&self) -> Self {
+        DynamicVersionRange {
+            inner: self.inner.clone(),
+            cached_constraints: OnceLock::new(),
+        }
+    }
+}
+
+/// Macro to eliminate repetition in match arms that do the same thing for all variants
+macro_rules! dispatch_inner {
+    ($inner:expr, $range:ident => $expr:expr) => {
+        match $inner {
+            DynamicVersionRangeInner::SemVer($range) => $expr,
+            DynamicVersionRangeInner::Deb($range) => $expr,
+        }
+    };
 }
 
 impl DynamicVersionRange {
@@ -72,7 +111,7 @@ impl DynamicVersionRange {
     }
 }
 
-impl VersionRange<&str> for DynamicVersionRange {
+impl VersionRange<String> for DynamicVersionRange {
     /// Get the versioning scheme used by this range.
     ///
     /// # Returns
@@ -89,9 +128,7 @@ impl VersionRange<&str> for DynamicVersionRange {
     /// assert_eq!(range.versioning_scheme(), "npm");
     /// ```
     fn versioning_scheme(&self) -> &str {
-        match self {
-            DynamicVersionRange::SemVer(range) => &range.versioning_scheme,
-        }
+        dispatch_inner!(&self.inner, range => &range.versioning_scheme)
     }
 
     /// Check if a version string is contained within this range.
@@ -114,23 +151,25 @@ impl VersionRange<&str> for DynamicVersionRange {
     /// use vers_rs::range::VersionRange;
     ///
     /// let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
-    /// assert!(range.contains("1.5.0").unwrap());
-    /// assert!(!range.contains("2.0.0").unwrap());
+    /// assert!(range.contains("1.5.0".to_string()).unwrap());
+    /// assert!(!range.contains("2.0.0".to_string()).unwrap());
     /// ```
-    fn contains(&self, version_str: &str) -> Result<bool, VersError> {
-        match self {
-            DynamicVersionRange::SemVer(range) => {
-                let version: SemVer = version_str.parse()?;
-                range.contains(&version)
+    fn contains(&self, version_str: String) -> Result<bool, VersError> {
+        match &self.inner {
+            DynamicVersionRangeInner::SemVer(range) => {
+                range.contains(version_str.parse::<SemVer>()?)
+            }
+            DynamicVersionRangeInner::Deb(range) => {
+                range.contains(version_str.parse::<DebVersion>()?)
             }
         }
     }
 
-    /// Get the constraints in this range.
+    /// Get the constraints in this range as Strings.
     ///
     /// # Returns
     ///
-    /// A reference to the constraints Vec in this range
+    /// A vector of type-erased version constraints
     ///
     /// # Examples
     ///
@@ -141,10 +180,16 @@ impl VersionRange<&str> for DynamicVersionRange {
     /// let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
     /// assert_eq!(range.constraints().len(), 2);
     /// ```
-    fn constraints(&self) -> &Vec<VersionConstraint<impl VersionType>> {
-        match self {
-            DynamicVersionRange::SemVer(range) => &range.constraints,
-        }
+    fn constraints(&self) -> &Vec<VersionConstraint<String>> {
+        self.cached_constraints.get_or_init(|| {
+            dispatch_inner!(&self.inner, range => {
+                range
+                    .constraints
+                    .iter()
+                    .map(|c| VersionConstraint::new(c.comparator, c.version.to_string()))
+                    .collect()
+            })
+        })
     }
 }
 
@@ -175,23 +220,24 @@ impl FromStr for DynamicVersionRange {
     /// ```
     fn from_str(s: &str) -> Result<Self, VersError> {
         // Extract the versioning scheme first to determine which type to use
-        let versioning_scheme = Self::extract_versioning_scheme(s)?;
+        let versioning_scheme = DynamicVersionRange::extract_versioning_scheme(s)?;
 
-        match versioning_scheme.as_str() {
-            "semver" | "npm" => {
-                let range: GenericVersionRange<SemVer> = s.parse()?;
-                Ok(DynamicVersionRange::SemVer(range))
-            }
-            _ => Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
-        }
+        let inner = match versioning_scheme.as_str() {
+            "semver" | "npm" => DynamicVersionRangeInner::SemVer(s.parse()?),
+            "deb" => DynamicVersionRangeInner::Deb(s.parse()?),
+            _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
+        };
+
+        Ok(DynamicVersionRange {
+            inner,
+            cached_constraints: OnceLock::new(),
+        })
     }
 }
 
 impl Display for DynamicVersionRange {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            DynamicVersionRange::SemVer(range) => write!(f, "{}", range),
-        }
+        dispatch_inner!(&self.inner, range => write!(f, "{}", range))
     }
 }
 
@@ -200,8 +246,6 @@ impl serde::ser::Serialize for DynamicVersionRange {
     where
         S: serde::ser::Serializer,
     {
-        match self {
-            DynamicVersionRange::SemVer(range) => range.serialize(serializer),
-        }
+        dispatch_inner!(&self.inner, range => range.serialize(serializer))
     }
 }
