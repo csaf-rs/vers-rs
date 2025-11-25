@@ -3,7 +3,7 @@
 A Rust library for parsing, validating, and checking version range specifiers.
 
 This library implements the version range specifier (vers) format as described in
-the [VERSION-RANGE-SPEC](https://github.com/package-url/purl-spec/blob/main/VERSION-RANGE-SPEC.rst).
+the [vers-spec](https://github.com/package-url/vers-spec).
 
 ## Usage
 
