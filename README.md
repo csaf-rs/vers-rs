@@ -1,9 +1,14 @@
 # vers-rs
 
-A Rust library for parsing, validating, and checking version range specifiers.
+[![Build](https://github.com/csaf-rs/vers-rs/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/csaf-rs/vers-rs/actions/workflows/build.yml)
+[![crates.io](https://img.shields.io/crates/v/vers-rs.svg)](https://crates.io/crates/vers-rs)
+[![npm](https://img.shields.io/npm/v/%40csaf-rs%2Fvers-rs.svg)](https://www.npmjs.com/package/@csaf-rs/vers-rs)
+
+A Rust library (with WASM support) for parsing, validating, and checking version
+range specifiers.
 
 This library implements the version range specifier (vers) format as described in
-the [VERSION-RANGE-SPEC](https://github.com/package-url/purl-spec/blob/main/VERSION-RANGE-SPEC.rst).
+the [vers-spec](https://github.com/package-url/vers-spec).
 
 ## Usage
 
