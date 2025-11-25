@@ -8,13 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-      - name: Add wasm target
-        run: rustup target add wasm32-unknown-unknown
+      - name: Prepare targets
+        run: |
+          rustup target add wasm32-unknown-unknown
+          rustup target add x86_64-unknown-linux-gnu
       - name: Build native crates
         run: cargo build --workspace --verbose
       - name: Build wasm target

@@ -13,11 +13,10 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
+      - name: Prepare targets
+        run: |
+          rustup target add wasm32-unknown-unknown
+          rustup target add x86_64-unknown-linux-gnu
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
       - name: Build wasm package
