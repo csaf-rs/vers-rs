@@ -13,12 +13,12 @@ All commands should be run from the repository root.
 
 2. Build the wasm package for the web (you might need to include `~/.cargo/bin/` in your `$PATH`):
    ```bash
-   wasm-pack build --target web --out-dir www/pkg
+   wasm-pack build --target web --scope csaf-rs --out-dir www/pkg
    ```
 
    If you've disabled default features in `Cargo.toml`, you can explicitly enable the wasm feature:
    ```bash
-   wasm-pack build --target web --out-dir www/pkg -- --features wasm
+   wasm-pack build --target web --scope csaf-rs --out-dir www/pkg -- --features wasm
    ```
 
    This produces a `www/pkg/` directory containing `vers_rs.js` and the wasm file.
