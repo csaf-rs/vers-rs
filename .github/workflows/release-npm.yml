@@ -1,3 +1,4 @@
+name: release-npm
 on:
   push:
     tags:
