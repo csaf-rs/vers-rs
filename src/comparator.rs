@@ -4,6 +4,7 @@
 //! in version constraints, such as =, !=, <, <=, >, >=, and *.
 
 use serde::{Deserialize, Serialize};
+use tsify::Tsify;
 use std::fmt;
 
 /// Comparator for version constraints.
@@ -11,7 +12,7 @@ use std::fmt;
 /// This enum represents the different types of comparators that can be used
 /// in version constraints. Each comparator defines how a version is compared
 /// to the constraint version.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 pub enum Comparator {
     /// Equal (=) - The version must be exactly equal to the constraint version.
     Equal,

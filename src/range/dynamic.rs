@@ -5,6 +5,8 @@ use crate::{GenericVersionRange, VersError, VersionConstraint};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
+use serde::{Deserialize, Serialize};
+use tsify::Tsify;
 
 /// A dynamic version range that automatically detects the versioning scheme.
 ///
@@ -29,7 +31,8 @@ use std::str::FromStr;
 /// assert!(npm_range.contains("1.5.0").unwrap());
 /// assert!(!npm_range.contains("2.0.0").unwrap());
 /// ```
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Serialize, Deserialize, Tsify)]
+#[tsify(into_wasm_abi, from_wasm_abi)]
 pub enum DynamicVersionRange {
     /// SemVer-based range (for "semver" and "npm" schemes)
     SemVer(GenericVersionRange<SemVer>),
@@ -191,17 +194,6 @@ impl Display for DynamicVersionRange {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             DynamicVersionRange::SemVer(range) => write!(f, "{}", range),
-        }
-    }
-}
-
-impl serde::ser::Serialize for DynamicVersionRange {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        match self {
-            DynamicVersionRange::SemVer(range) => range.serialize(serializer),
         }
     }
 }

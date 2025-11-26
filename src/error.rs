@@ -6,7 +6,9 @@
 
 #[cfg(feature = "wasm")]
 use js_sys::Error as JsError;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tsify::Tsify;
 #[cfg(feature = "wasm")]
 use wasm_bindgen::JsValue;
 
@@ -14,7 +16,7 @@ use wasm_bindgen::JsValue;
 ///
 /// This enum represents all the possible errors that can occur when parsing,
 /// validating, or using version range specifiers.
-#[derive(Error, Debug, PartialEq, Eq)]
+#[derive(Error, Debug, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 pub enum VersError {
     #[error("Invalid URI scheme, expected 'vers'")]
     InvalidScheme,
