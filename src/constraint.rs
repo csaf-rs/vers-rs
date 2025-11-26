@@ -14,10 +14,11 @@ use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
 /// A trait alias for version types that can be used in version constraints and ranges.
-pub trait VersionType: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
+pub trait VersionType: FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize {}
 
-// Blanket implementation for any type that satisfies the bounds
-impl<T> VersionType for T where T: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
+/// Blanket implementation for any type that satisfies the bounds
+impl<T> VersionType for T where T:
+FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize {}
 
 /// A single version constraint with a comparator and version.
 ///
@@ -93,7 +94,13 @@ impl<V: VersionType> VersionConstraint<V> {
             });
         }
 
-        let (comparator, version) = if constraint_str.starts_with(">=") {
+        // TODO: Move non-vers constraints to their respective implementations,
+        // i.e., implement a from_native() function for each scheme
+        let (comparator, version) = if constraint_str.starts_with("<<") {
+            (Comparator::LessThan, &constraint_str[2..])
+        } else if constraint_str.starts_with(">>") {
+            (Comparator::GreaterThan, &constraint_str[2..])
+        } else if constraint_str.starts_with(">=") {
             (Comparator::GreaterThanOrEqual, &constraint_str[2..])
         } else if constraint_str.starts_with("<=") {
             (Comparator::LessThanOrEqual, &constraint_str[2..])
