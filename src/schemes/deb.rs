@@ -6,6 +6,13 @@ use std::str::FromStr;
 /// Scheme identifier string for Debian versions
 pub static DEB_SCHEME: &str = "deb";
 
+/// Macro to create InvalidVersionFormat errors for Debian versions
+macro_rules! deb_format_error {
+    ($s:expr, $msg:expr) => {
+        VersError::InvalidVersionFormat(DEB_SCHEME, $s.to_string(), $msg.into())
+    };
+}
+
 /// Debian version according to dpkg version format: [epoch:]upstream[-debian]
 ///
 /// This implementation follows Debian Policy version comparison rules:
@@ -48,40 +55,27 @@ impl FromStr for DebVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() {
-            return Err(VersError::InvalidVersionFormat(
-                DEB_SCHEME,
-                s.to_string(),
-                "empty".into(),
-            ));
+            return Err(deb_format_error!(s, "empty"));
         }
 
         // Parse epoch
         let (epoch, rest) = if let Some(colon) = s.find(':') {
             let ep_str = &s[..colon];
             if ep_str.is_empty() {
-                return Err(VersError::InvalidVersionFormat(
-                    DEB_SCHEME,
-                    s.to_string(),
-                    "missing epoch".into(),
-                ));
+                return Err(deb_format_error!(s, "missing epoch"));
             }
-            let epoch = ep_str.parse::<u64>().map_err(|e| {
-                VersError::InvalidVersionFormat(
-                    DEB_SCHEME,
-                    s.to_string(),
-                    format!("invalid epoch: {e}"),
-                )
-            })?;
+            let epoch = ep_str
+                .parse::<u64>()
+                .map_err(|e| deb_format_error!(s, format!("invalid epoch: {e}")))?;
             (epoch, &s[colon + 1..])
         } else {
             (0, s)
         };
 
         if rest.ends_with('-') {
-            return Err(VersError::InvalidVersionFormat(
-                DEB_SCHEME,
-                s.to_string(),
-                "trailing '-' with empty debian_revision".into(),
+            return Err(deb_format_error!(
+                s,
+                "trailing '-' with empty debian_revision"
             ));
         }
 
@@ -96,27 +90,21 @@ impl FromStr for DebVersion {
 
         // Validate upstream
         if upstream.is_empty() {
-            return Err(VersError::InvalidVersionFormat(
-                DEB_SCHEME,
-                s.to_string(),
-                "missing upstream_version".into(),
-            ));
+            return Err(deb_format_error!(s, "missing upstream_version"));
         }
 
         if !upstream.chars().next().unwrap().is_ascii_digit() {
-            return Err(VersError::InvalidVersionFormat(
-                DEB_SCHEME,
-                s.to_string(),
-                "upstream_version must start with a digit".into(),
+            return Err(deb_format_error!(
+                s,
+                "upstream_version must start with a digit"
             ));
         }
 
         for ch in upstream.chars() {
             if !ch.is_ascii_alphanumeric() && !matches!(ch, '.' | '+' | '-' | '~') {
-                return Err(VersError::InvalidVersionFormat(
-                    DEB_SCHEME,
-                    s.to_string(),
-                    format!("invalid character '{ch}' in upstream_version"),
+                return Err(deb_format_error!(
+                    s,
+                    format!("invalid character '{ch}' in upstream_version")
                 ));
             }
         }
@@ -125,10 +113,9 @@ impl FromStr for DebVersion {
         if !debian_revision.is_empty() {
             for ch in debian_revision.chars() {
                 if !ch.is_ascii_alphanumeric() && !matches!(ch, '+' | '.' | '~') {
-                    return Err(VersError::InvalidVersionFormat(
-                        DEB_SCHEME,
-                        s.to_string(),
-                        format!("invalid character '{ch}' in debian_revision"),
+                    return Err(deb_format_error!(
+                        s,
+                        format!("invalid character '{ch}' in debian_revision")
                     ));
                 }
             }

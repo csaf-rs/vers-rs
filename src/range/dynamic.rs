@@ -1,20 +1,22 @@
 use crate::range::VersionRange;
-use crate::schemes::semver::SemVer;
 use crate::schemes::deb::DebVersion;
-use crate::{GenericVersionRange, VersError, VersionConstraint};
-use serde::{Deserialize, Serialize};
+use crate::schemes::semver::SemVer;
+use crate::{VersError, VersVersionRange, VersionConstraint};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use std::sync::OnceLock;
 
 /// Internal enum for the actual version range implementation
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[serde(tag = "versioning_scheme")]
 enum DynamicVersionRangeInner {
     /// SemVer-based range (for "semver" and "npm" schemes)
-    SemVer(GenericVersionRange<SemVer>),
+    #[serde(rename = "semver", alias = "npm")]
+    SemVer(VersVersionRange<SemVer>),
     /// Debian dpkg-style versioning ("deb" scheme)
-    Deb(GenericVersionRange<DebVersion>),
+    #[serde(rename = "deb")]
+    Deb(VersVersionRange<DebVersion>),
 }
 
 /// A dynamic version range that automatically detects the versioning scheme.
@@ -250,5 +252,18 @@ impl serde::ser::Serialize for DynamicVersionRange {
         S: serde::ser::Serializer,
     {
         dispatch_inner!(&self.inner, range => range.serialize(serializer))
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let inner = DynamicVersionRangeInner::deserialize(deserializer)?;
+        Ok(DynamicVersionRange {
+            inner,
+            cached_constraints: OnceLock::new(),
+        })
     }
 }
