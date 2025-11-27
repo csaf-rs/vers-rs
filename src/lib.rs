@@ -8,9 +8,9 @@ pub mod schemes;
 pub use comparator::Comparator;
 pub use constraint::VersionConstraint;
 pub use error::VersError;
-pub use range::dynamic::DynamicVersionRange;
-pub use range::generic::GenericVersionRange;
 pub use range::VersionRange;
+pub use range::dynamic::DynamicVersionRange;
+pub use range::vers::VersVersionRange;
 
 #[cfg(feature = "wasm")]
 use serde_wasm_bindgen;
@@ -89,8 +89,8 @@ pub fn contains(range: &DynamicVersionRange, version_str: String) -> Result<bool
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schemes::semver::SemVer;
     use crate::VersError;
+    use crate::schemes::semver::SemVer;
 
     #[test]
     fn test_parse_simple() {
@@ -150,28 +150,28 @@ mod tests {
 
     #[test]
     fn test_invalid_scheme() {
-        let result: Result<GenericVersionRange<SemVer>, _> = "foo:npm/1.2.3".parse();
+        let result: Result<VersVersionRange<SemVer>, _> = "foo:npm/1.2.3".parse();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), VersError::InvalidScheme);
     }
 
     #[test]
     fn test_missing_scheme() {
-        let result: Result<GenericVersionRange<SemVer>, _> = "vers:/1.2.3".parse();
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:/1.2.3".parse();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), VersError::MissingVersioningScheme);
     }
 
     #[test]
     fn test_empty_constraints() {
-        let result: Result<GenericVersionRange<SemVer>, _> = "vers:npm/".parse();
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/".parse();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), VersError::EmptyConstraints);
     }
 
     #[test]
     fn test_duplicate_version() {
-        let result: Result<GenericVersionRange<SemVer>, _> = "vers:npm/1.2.3|1.2.3".parse();
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/1.2.3|1.2.3".parse();
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -194,7 +194,7 @@ mod tests {
     #[test]
     fn test_normalize() {
         // Test normalization of redundant constraints
-        let mut range = GenericVersionRange::<SemVer>::new(
+        let mut range = VersVersionRange::<SemVer>::new(
             "npm".to_string(),
             vec![
                 VersionConstraint::new(Comparator::GreaterThanOrEqual, "1.0.0".parse().unwrap()),

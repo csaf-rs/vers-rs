@@ -1,7 +1,7 @@
 use crate::range::VersionRange;
-use crate::schemes::semver::SemVer;
 use crate::schemes::deb::DebVersion;
-use crate::{GenericVersionRange, VersError, VersionConstraint};
+use crate::schemes::semver::SemVer;
+use crate::{VersError, VersVersionRange, VersionConstraint};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -11,9 +11,9 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DynamicVersionRangeInner {
     /// SemVer-based range (for "semver" and "npm" schemes)
-    SemVer(GenericVersionRange<SemVer>),
+    SemVer(VersVersionRange<SemVer>),
     /// Debian dpkg-style versioning ("deb" scheme)
-    Deb(GenericVersionRange<DebVersion>),
+    Deb(VersVersionRange<DebVersion>),
 }
 
 /// A dynamic version range that automatically detects the versioning scheme.

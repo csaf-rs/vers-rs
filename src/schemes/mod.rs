@@ -1,2 +1,2 @@
-pub mod semver;
 pub mod deb;
+pub mod semver;

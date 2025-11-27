@@ -14,11 +14,16 @@ use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
 /// A trait alias for version types that can be used in version constraints and ranges.
-pub trait VersionType: FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize {}
+pub trait VersionType:
+    FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize
+{
+}
 
 /// Blanket implementation for any type that satisfies the bounds
-impl<T> VersionType for T where T:
-FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize {}
+impl<T> VersionType for T where
+    T: FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize
+{
+}
 
 /// A single version constraint with a comparator and version.
 ///

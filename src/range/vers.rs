@@ -44,7 +44,7 @@ use std::str::FromStr;
 /// - `vers:npm/>=1.0.0|<2.0.0` (a range of versions)
 /// - `vers:pypi/*` (any version)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct GenericVersionRange<V: VersionType> {
+pub struct VersVersionRange<V: VersionType> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
     pub versioning_scheme: String,
 
@@ -52,7 +52,7 @@ pub struct GenericVersionRange<V: VersionType> {
     pub constraints: Vec<VersionConstraint<V>>,
 }
 
-impl<V: VersionType> VersionRange<V> for GenericVersionRange<V> {
+impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
     /// Get the versioning scheme used by this range.
     ///
     /// # Returns
@@ -85,11 +85,11 @@ impl<V: VersionType> VersionRange<V> for GenericVersionRange<V> {
     /// # Examples
     ///
     /// ```
-    /// use vers_rs::{parse, GenericVersionRange};
+    /// use vers_rs::{parse, VersVersionRange};
     /// use vers_rs::range::VersionRange;
     /// use vers_rs::schemes::semver::SemVer;
     ///
-    /// let range = "vers:npm/>=1.0.0|<2.0.0".parse::<GenericVersionRange<SemVer>>().unwrap();
+    /// let range = "vers:npm/>=1.0.0|<2.0.0".parse::<VersVersionRange<SemVer>>().unwrap();
     /// assert!(range.contains("1.5.0".parse().unwrap()).unwrap());
     /// assert!(!range.contains("2.0.0".parse().unwrap()).unwrap());
     /// ```
@@ -181,7 +181,7 @@ impl<V: VersionType> VersionRange<V> for GenericVersionRange<V> {
     }
 }
 
-impl<V: VersionType> GenericVersionRange<V> {
+impl<V: VersionType> VersVersionRange<V> {
     /// Create a new version range with the given versioning scheme and constraints.
     ///
     /// # Arguments
@@ -377,7 +377,7 @@ impl<V: VersionType> GenericVersionRange<V> {
     }
 }
 
-impl<V: VersionType> FromStr for GenericVersionRange<V> {
+impl<V: VersionType> FromStr for VersVersionRange<V> {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -450,7 +450,7 @@ impl<V: VersionType> FromStr for GenericVersionRange<V> {
     }
 }
 
-impl<V: VersionType> Display for GenericVersionRange<V> {
+impl<V: VersionType> Display for VersVersionRange<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "vers:{}/", self.versioning_scheme)?;
 
