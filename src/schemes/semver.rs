@@ -2,13 +2,13 @@ use crate::VersError;
 use derive_more::Display;
 use semver::Version;
 use serde::{Deserialize, Serialize};
-use tsify::Tsify;
 use std::cmp::Ordering;
 use std::str::FromStr;
 
 pub static SEMVER_SCHEME: &str = "semver/npm";
 
-#[derive(Display, Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize, Tsify)]
+#[derive(Display, Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SemVer(Version);
 
 impl Default for SemVer {

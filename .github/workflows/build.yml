@@ -14,6 +14,8 @@ jobs:
           rustup target add x86_64-unknown-linux-gnu
       - name: Build native crates
         run: cargo build --workspace --verbose
+      - name: Build without default features
+        run: cargo build --workspace --no-default-features --verbose
       - name: Build wasm target
         run: cargo build --workspace --target wasm32-unknown-unknown --verbose
 

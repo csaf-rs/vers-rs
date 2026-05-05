@@ -38,7 +38,7 @@ use wasm_bindgen::prelude::*;
 /// assert_eq!(range.versioning_scheme(), "npm");
 /// assert_eq!(range.constraints().len(), 2);
 /// ```
-#[wasm_bindgen]
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub fn parse(s: &str) -> Result<DynamicVersionRange, VersError> {
     s.parse()
 }
