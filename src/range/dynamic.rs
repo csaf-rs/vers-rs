@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use tsify::Tsify;
 
 /// A dynamic version range that automatically detects the versioning scheme.
 ///
