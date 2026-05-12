@@ -4,8 +4,8 @@
 //! in version constraints, such as =, !=, <, <=, >, >=, and *.
 
 use serde::{Deserialize, Serialize};
-use tsify::Tsify;
 use std::fmt;
+use tsify::Tsify;
 
 /// Comparator for version constraints.
 ///

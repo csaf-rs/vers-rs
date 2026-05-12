@@ -2,10 +2,10 @@ use crate::constraint::VersionType;
 use crate::range::VersionRange;
 use crate::schemes::semver::SemVer;
 use crate::{GenericVersionRange, VersError, VersionConstraint};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
-use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 
 /// A dynamic version range that automatically detects the versioning scheme.
