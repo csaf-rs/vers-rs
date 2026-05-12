@@ -8,6 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Update rustup
+        run: rustup update stable --no-self-update
+      - name: Format check
+        run: |
+          rustup component add rustfmt
+          cargo fmt --all -- --check -l
       - name: Prepare targets
         run: |
           rustup target add wasm32-unknown-unknown
