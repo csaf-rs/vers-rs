@@ -318,15 +318,14 @@ impl<V: VersionType> GenericVersionRange<V> {
         // as comparator (or no constraint).
         let mut filter_iter = filtered_constraints.iter().map(|c| c.comparator).peekable();
         while let Some(current) = filter_iter.next() {
-            if let Some(next) = filter_iter.peek() {
-                if current == Equal && !matches!(*next, Equal | GreaterThan | GreaterThanOrEqual) {
+            if let Some(next) = filter_iter.peek()
+                && current == Equal && !matches!(*next, Equal | GreaterThan | GreaterThanOrEqual) {
                     return Err(VersError::InvalidRange(format!(
                         "\"{}\" must not be followed by \"{}\" in a normalized range \
                         (ignoring \"!=\")",
                         current, next,
                     )));
                 }
-            }
         }
 
         // And ignoring all constraints with "=" or "!=" comparators, the sequence of
