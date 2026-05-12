@@ -10,9 +10,9 @@
 use crate::{Comparator, VersError};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
-use tsify::Tsify;
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
+use tsify::Tsify;
 
 /// A trait alias for version types that can be used in version constraints and ranges.
 pub trait VersionType: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
