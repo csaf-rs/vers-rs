@@ -38,4 +38,4 @@ jobs:
         run: |
           wasm-pack build --out-dir pkg --scope csaf-rs
           cd pkg
-          npm publish --dry-run
+          npm pack --dry-run
