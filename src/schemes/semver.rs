@@ -8,12 +8,18 @@ use tsify::Tsify;
 
 pub static SEMVER_SCHEME: &str = "semver/npm";
 
-#[derive(Display, Clone, Debug, PartialEq, Eq, PartialOrd, Serialize, Deserialize, Tsify)]
+#[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Tsify)]
 pub struct SemVer(Version);
 
 impl Default for SemVer {
     fn default() -> Self {
         SemVer(Version::new(0, 0, 0))
+    }
+}
+
+impl PartialOrd for SemVer {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
