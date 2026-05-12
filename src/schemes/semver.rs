@@ -4,6 +4,7 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::str::FromStr;
+use tsify::Tsify;
 
 pub static SEMVER_SCHEME: &str = "semver/npm";
 
