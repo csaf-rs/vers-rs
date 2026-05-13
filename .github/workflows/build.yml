@@ -14,30 +14,28 @@ jobs:
         run: |
           rustup component add rustfmt
           cargo fmt --all -- --check -l
-      - name: Clippy check
-        run: |
-          rustup component add clippy
-          cargo clippy --workspace --all-targets -- -D warnings
       - name: Prepare targets
         run: |
           rustup target add wasm32-unknown-unknown
           rustup target add x86_64-unknown-linux-gnu
+      - name: Clippy check
+        run: |
+          rustup component add clippy
+          cargo clippy --locked --all-targets --workspace -- -D warnings
+      - name: Run tests
+        run: cargo test --locked --all-targets --workspace --verbose
       - name: Build native crates
-        run: cargo build --workspace --verbose
+        run: cargo build --locked --workspace --verbose
       - name: Build wasm target
-        run: cargo build --workspace --target wasm32-unknown-unknown --verbose
-
+        run: cargo build --locked --workspace --target wasm32-unknown-unknown --verbose
       - name: Cargo publish dry-run
-        run: cargo publish --dry-run
-
+        run: cargo publish --locked --dry-run
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
-
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
-
       - name: Build wasm package and npm dry-run
         run: |
           wasm-pack build --out-dir pkg --scope csaf-rs
