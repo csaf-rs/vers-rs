@@ -103,9 +103,7 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
         // Check for exact matches with equality and inequality comparators
         for constraint in &self.constraints {
             match constraint.comparator {
-                Equal | GreaterThanOrEqual | LessThanOrEqual
-                    if version == &constraint.version =>
-                {
+                Equal | GreaterThanOrEqual | LessThanOrEqual if version == &constraint.version => {
                     return Ok(true);
                 }
                 NotEqual if version == &constraint.version => {
