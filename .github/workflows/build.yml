@@ -14,6 +14,10 @@ jobs:
         run: |
           rustup component add rustfmt
           cargo fmt --all -- --check -l
+      - name: Clippy check
+        run: |
+          rustup component add clippy
+          cargo clippy --workspace --all-targets -- -D warnings
       - name: Prepare targets
         run: |
           rustup target add wasm32-unknown-unknown
