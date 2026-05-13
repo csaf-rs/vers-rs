@@ -94,16 +94,16 @@ impl<V: VersionType> VersionConstraint<V> {
             });
         }
 
-        let (comparator, version) = if constraint_str.starts_with(">=") {
-            (Comparator::GreaterThanOrEqual, &constraint_str[2..])
-        } else if constraint_str.starts_with("<=") {
-            (Comparator::LessThanOrEqual, &constraint_str[2..])
-        } else if constraint_str.starts_with("!=") {
-            (Comparator::NotEqual, &constraint_str[2..])
-        } else if constraint_str.starts_with('>') {
-            (Comparator::GreaterThan, &constraint_str[1..])
-        } else if constraint_str.starts_with('<') {
-            (Comparator::LessThan, &constraint_str[1..])
+        let (comparator, version) = if let Some(stripped) = constraint_str.strip_prefix(">=") {
+            (Comparator::GreaterThanOrEqual, stripped)
+        } else if let Some(stripped) = constraint_str.strip_prefix("<=") {
+            (Comparator::LessThanOrEqual, stripped)
+        } else if let Some(stripped) = constraint_str.strip_prefix("!=") {
+            (Comparator::NotEqual, stripped)
+        } else if let Some(stripped) = constraint_str.strip_prefix('>') {
+            (Comparator::GreaterThan, stripped)
+        } else if let Some(stripped) = constraint_str.strip_prefix('<') {
+            (Comparator::LessThan, stripped)
         } else {
             (Comparator::Equal, constraint_str)
         };

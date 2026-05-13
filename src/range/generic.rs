@@ -103,15 +103,11 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
         // Check for exact matches with equality and inequality comparators
         for constraint in &self.constraints {
             match constraint.comparator {
-                Equal | GreaterThanOrEqual | LessThanOrEqual => {
-                    if version == &constraint.version {
-                        return Ok(true);
-                    }
+                Equal | GreaterThanOrEqual | LessThanOrEqual if version == &constraint.version => {
+                    return Ok(true);
                 }
-                NotEqual => {
-                    if version == &constraint.version {
-                        return Ok(false);
-                    }
+                NotEqual if version == &constraint.version => {
+                    return Ok(false);
                 }
                 _ => {}
             }
@@ -318,14 +314,15 @@ impl<V: VersionType> GenericVersionRange<V> {
         // as comparator (or no constraint).
         let mut filter_iter = filtered_constraints.iter().map(|c| c.comparator).peekable();
         while let Some(current) = filter_iter.next() {
-            if let Some(next) = filter_iter.peek() {
-                if current == Equal && !matches!(*next, Equal | GreaterThan | GreaterThanOrEqual) {
-                    return Err(VersError::InvalidRange(format!(
-                        "\"{}\" must not be followed by \"{}\" in a normalized range \
+            if let Some(next) = filter_iter.peek()
+                && current == Equal
+                && !matches!(*next, Equal | GreaterThan | GreaterThanOrEqual)
+            {
+                return Err(VersError::InvalidRange(format!(
+                    "\"{}\" must not be followed by \"{}\" in a normalized range \
                         (ignoring \"!=\")",
-                        current, next,
-                    )));
-                }
+                    current, next,
+                )));
             }
         }
 
