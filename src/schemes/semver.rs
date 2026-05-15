@@ -4,11 +4,11 @@ use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::str::FromStr;
-use tsify::Tsify;
 
 pub static SEMVER_SCHEME: &str = "semver/npm";
 
-#[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SemVer(Version);
 
 impl Default for SemVer {

@@ -4,19 +4,18 @@
 //! The main error type is `VersError`, which represents all possible
 //! errors that can occur when working with version range specifiers.
 
-#[cfg(feature = "wasm")]
-use js_sys::Error as JsError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tsify::Tsify;
+
 #[cfg(feature = "wasm")]
-use wasm_bindgen::JsValue;
+use {js_sys::Error as JsError, tsify::Tsify, wasm_bindgen::JsValue};
 
 /// Errors that can occur when working with version range specifiers.
 ///
 /// This enum represents all the possible errors that can occur when parsing,
 /// validating, or using version range specifiers.
-#[derive(Error, Debug, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[derive(Error, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(Tsify))]
 pub enum VersError {
     #[error("Invalid URI scheme, expected 'vers'")]
     InvalidScheme,

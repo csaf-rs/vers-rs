@@ -26,6 +26,8 @@ jobs:
         run: cargo test --locked --all-targets --workspace --verbose
       - name: Build native crates
         run: cargo build --locked --workspace --verbose
+      - name: Build without default features
+        run: cargo build --workspace --no-default-features --verbose
       - name: Build wasm target
         run: cargo build --locked --workspace --target wasm32-unknown-unknown --verbose
       - name: Cargo publish dry-run

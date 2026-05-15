@@ -5,14 +5,14 @@
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tsify::Tsify;
 
 /// Comparator for version constraints.
 ///
 /// This enum represents the different types of comparators that can be used
 /// in version constraints. Each comparator defines how a version is compared
 /// to the constraint version.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Comparator {
     /// Equal (=) - The version must be exactly equal to the constraint version.
     Equal,

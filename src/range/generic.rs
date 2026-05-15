@@ -31,7 +31,6 @@ use std::collections::LinkedList;
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
-use tsify::Tsify;
 
 /// A version range specifier.
 ///
@@ -44,7 +43,8 @@ use tsify::Tsify;
 /// - `vers:npm/1.2.3` (a single version)
 /// - `vers:npm/>=1.0.0|<2.0.0` (a range of versions)
 /// - `vers:pypi/*` (any version)
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Tsify)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct GenericVersionRange<V: VersionType> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
     pub versioning_scheme: String,
