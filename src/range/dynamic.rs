@@ -1,3 +1,4 @@
+use crate::constraint::NativeConstraintConverter;
 use crate::range::VersionRange;
 use crate::schemes::deb::DebVersion;
 use crate::schemes::semver::SemVer;
@@ -80,6 +81,46 @@ macro_rules! dispatch_inner {
 }
 
 impl DynamicVersionRange {
+    /// Parse a native range string for the given versioning scheme into a `DynamicVersionRange`.
+    ///
+    /// Unlike `FromStr`, this does **not** require the `vers:scheme/` prefix. It accepts
+    /// the scheme name and a native range string directly, delegating to the scheme's
+    /// [`NativeConstraintConverter`] implementation.
+    ///
+    /// # Arguments
+    ///
+    /// * `scheme` - The versioning scheme name (e.g. `"deb"`, `"semver"`, `"npm"`)
+    /// * `raw` - The native range string (e.g. `"<<1.0"`, `">=1.0.0|<2.0.0"`)
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the parsed `DynamicVersionRange` or an error.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use vers_rs::range::dynamic::DynamicVersionRange;
+    /// use vers_rs::range::VersionRange;
+    ///
+    /// let range = DynamicVersionRange::from_native_constraint("deb", "<<1.0").unwrap();
+    /// assert_eq!(range.versioning_scheme(), "deb");
+    /// assert!(range.contains("0.9".to_string()).unwrap());
+    /// ```
+    pub fn from_native_constraint(scheme: &str, raw: &str) -> Result<Self, VersError> {
+        let inner = match scheme {
+            "semver" | "npm" => {
+                DynamicVersionRangeInner::SemVer(SemVer::from_native_string(raw)?)
+            }
+            "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(raw)?),
+            _ => return Err(VersError::UnsupportedVersioningScheme(scheme.to_string())),
+        };
+
+        Ok(DynamicVersionRange {
+            inner,
+            cached_constraints: OnceLock::new(),
+        })
+    }
+
     /// Extract the versioning scheme from a version range specifier string.
     ///
     /// This is a helper function used internally to determine which version type

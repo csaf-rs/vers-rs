@@ -6,6 +6,7 @@ pub mod range;
 pub mod schemes;
 
 pub use comparator::Comparator;
+pub use constraint::NativeConstraintConverter;
 pub use constraint::VersionConstraint;
 pub use error::VersError;
 pub use range::VersionRange;
@@ -68,6 +69,36 @@ pub fn parse(s: &str) -> Result<DynamicVersionRange, VersError> {
 /// ```
 pub fn contains(range: &DynamicVersionRange, version_str: String) -> Result<bool, VersError> {
     range.contains(version_str)
+}
+
+/// Parse a native range string for the given versioning scheme into a `DynamicVersionRange`.
+///
+/// This function accepts a scheme name and a native range string directly, without
+/// requiring the `vers:scheme/` prefix. It delegates to the scheme's
+/// [`NativeConstraintConverter`] implementation.
+///
+/// # Arguments
+///
+/// * `scheme` - The versioning scheme name (e.g. `"deb"`, `"semver"`, `"npm"`)
+/// * `raw` - The native range string (e.g. `"<<1.0"`, `">=1.0.0|<2.0.0"`)
+///
+/// # Returns
+///
+/// A `Result` containing the parsed `DynamicVersionRange` or an error.
+///
+/// # Examples
+///
+/// ```
+/// use vers_rs::parse_native;
+/// use vers_rs::range::VersionRange;
+///
+/// let range = parse_native("deb", "<<1.0").unwrap();
+/// assert_eq!(range.versioning_scheme(), "deb");
+/// assert!(range.contains("0.9".to_string()).unwrap());
+/// ```
+#[cfg_attr(feature = "wasm", wasm_bindgen)]
+pub fn parse_native(scheme: &str, raw: &str) -> Result<DynamicVersionRange, VersError> {
+    DynamicVersionRange::from_native_constraint(scheme, raw)
 }
 
 #[cfg(test)]

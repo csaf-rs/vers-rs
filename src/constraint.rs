@@ -8,10 +8,74 @@
 //! considered within a version range.
 
 use crate::{Comparator, VersError};
+use crate::VersVersionRange;
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
+
+/// Trait for version types that support native (scheme-specific) syntax.
+///
+/// Some versioning schemes define their own syntax that differs from the standard
+/// vers pipe-delimited format. For example:
+/// - Debian defines `>>` (strictly greater) and `<<` (strictly less)
+/// - Future schemes may define interval notation like `[1.0;2.0)` meaning `>=1.0|<2.0`
+///
+/// This trait provides two entry points:
+/// - `from_native`: parses a full native range string into vers constraints
+/// - `from_native_constraint`: parses a single native constraint into a vers constraint
+///
+/// The default `from_native` splits on `|` and delegates to `from_native_constraint`
+/// for each segment. Schemes with entirely different range syntax can override
+/// `from_native` directly.
+pub trait NativeConstraintConverter: VersionType {
+    /// The vers scheme identifier for this version type (e.g. `"deb"`, `"semver"`).
+    const SCHEME_NAME: &'static str;
+
+    /// Parse a native range string into a fully parsed `VersVersionRange`.
+    ///
+    /// This is the main entry point for converting native syntax into vers ranges.
+    /// The default implementation calls [`Self::from_native`] and wraps
+    /// the result with [`Self::SCHEME_NAME`]. Schemes whose native syntax
+    /// requires special handling can override this directly.
+    fn from_native_string(raw: &str) -> Result<VersVersionRange<Self>, VersError> {
+        Ok(VersVersionRange::new(
+            Self::SCHEME_NAME.to_string(),
+            Self::from_native(raw)?,
+        ))
+    }
+
+    /// Parse a full native range string into one or more standard `VersionConstraint`s.
+    ///
+    /// This is the main entry point called by `VersVersionRange::from_str`. It receives
+    /// the entire constraint portion of the vers string (after the scheme prefix).
+    ///
+    /// The default implementation splits on `|` and calls [`Self::from_native_constraint`] for
+    /// each segment. Schemes whose native syntax doesn't use `|` as a delimiter
+    /// should override this method.
+    fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
+        let segments: Vec<&str> = raw
+            .trim_matches('|')
+            .split('|')
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if segments.is_empty() {
+            return Err(VersError::EmptyConstraints);
+        }
+
+        segments.iter().map(|s| Self::from_native_constraint(s)).collect()
+    }
+
+    /// Parse a single native constraint string into one or more `VersionConstraint`s.
+    ///
+    /// The default implementation delegates to the standard vers constraint parser,
+    /// assuming a single constraint. Schemes with native operators (e.g. `<<`, `>>`)
+    /// override this to handle their own syntax.
+    fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
+        VersionConstraint::<Self>::parse(raw)
+    }
+}
 
 /// A trait alias for version types that can be used in version constraints and ranges.
 pub trait VersionType:

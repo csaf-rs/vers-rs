@@ -24,6 +24,7 @@
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
 use crate::constraint::VersionType;
+use crate::constraint::NativeConstraintConverter;
 use crate::error::VersError;
 use crate::range::VersionRange;
 use serde::{Deserialize, Serialize};
@@ -379,7 +380,7 @@ impl<V: VersionType> VersVersionRange<V> {
     }
 }
 
-impl<V: VersionType> FromStr for VersVersionRange<V> {
+impl<V: NativeConstraintConverter> FromStr for VersVersionRange<V> {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -424,29 +425,14 @@ impl<V: VersionType> FromStr for VersVersionRange<V> {
             });
         }
 
-        // Split constraints on each pipe
-        let constraint_strs: Vec<&str> = constraints_str
-            .trim_matches('|')
-            .split('|')
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if constraint_strs.is_empty() {
-            return Err(VersError::EmptyConstraints);
-        }
-
-        // Parse each constraint
-        let mut constraints = Vec::new();
-        for constraint_str in constraint_strs {
-            let constraint = VersionConstraint::<V>::parse(constraint_str)?;
-            constraints.push(constraint);
-        }
+        // Delegate constraint parsing entirely to the scheme's native converter
+        let constraints = V::from_native(constraints_str)?;
 
         let mut range = Self {
             versioning_scheme,
             constraints,
         };
-        range.normalize_and_validate()?; // Use the combined function
+        range.normalize_and_validate()?;
 
         Ok(range)
     }

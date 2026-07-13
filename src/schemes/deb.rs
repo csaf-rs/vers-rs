@@ -1,4 +1,6 @@
 use crate::VersError;
+use crate::constraint::NativeConstraintConverter;
+use crate::VersionConstraint;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::str::FromStr;
@@ -34,6 +36,20 @@ impl Default for DebVersion {
             upstream: "0".to_string(),
             debian_revision: String::new(),
         }
+    }
+}
+
+impl NativeConstraintConverter for DebVersion {
+    const SCHEME_NAME: &'static str = "deb";
+
+    /// Parse a Debian native constraint string into standard vers constraints.
+    ///
+    /// Debian defines `>>` (strictly greater than) and `<<` (strictly less than)
+    /// as native comparison operators. This method converts them to the
+    /// standard `>` and `<` operators and delegates to the vers parser.
+    fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
+        let converted = raw.replace(">>", ">").replace("<<", "<");
+        VersionConstraint::<Self>::parse(&converted)
     }
 }
 
