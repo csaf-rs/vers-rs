@@ -109,10 +109,8 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
                         return Ok(true);
                     }
                 }
-                NotEqual => {
-                    if version == constraint.version {
-                        return Ok(false);
-                    }
+                NotEqual if version == constraint.version => {
+                    return Ok(false);
                 }
                 _ => {}
             }
