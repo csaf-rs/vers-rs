@@ -1,4 +1,4 @@
-use crate::constraint::NativeConstraintConverter;
+use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::deb::DebVersion;
 use crate::schemes::semver::SemVer;
@@ -85,7 +85,7 @@ impl DynamicVersionRange {
     ///
     /// Unlike `FromStr`, this does **not** require the `vers:scheme/` prefix. It accepts
     /// the scheme name and a native range string directly, delegating to the scheme's
-    /// [`NativeConstraintConverter`] implementation.
+    /// [`NativeVersionConverter`] implementation.
     ///
     /// # Arguments
     ///
@@ -102,11 +102,11 @@ impl DynamicVersionRange {
     /// use vers_rs::range::dynamic::DynamicVersionRange;
     /// use vers_rs::range::VersionRange;
     ///
-    /// let range = DynamicVersionRange::from_native_constraint("deb", "<<1.0").unwrap();
+    /// let range = DynamicVersionRange::parse_native("deb", "<<1.0").unwrap();
     /// assert_eq!(range.versioning_scheme(), "deb");
     /// assert!(range.contains("0.9".to_string()).unwrap());
     /// ```
-    pub fn from_native_constraint(scheme: &str, raw: &str) -> Result<Self, VersError> {
+    pub fn parse_native(scheme: &str, raw: &str) -> Result<Self, VersError> {
         let inner = match scheme {
             "semver" | "npm" => {
                 DynamicVersionRangeInner::SemVer(SemVer::from_native_string(raw)?)

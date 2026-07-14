@@ -21,14 +21,15 @@ use std::str::FromStr;
 /// - Debian defines `>>` (strictly greater) and `<<` (strictly less)
 /// - Future schemes may define interval notation like `[1.0;2.0)` meaning `>=1.0|<2.0`
 ///
-/// This trait provides two entry points:
+/// This trait provides three entry points:
+/// - `from_native_string`: parses a native range string into a full `VersVersionRange`
 /// - `from_native`: parses a full native range string into vers constraints
 /// - `from_native_constraint`: parses a single native constraint into a vers constraint
 ///
 /// The default `from_native` splits on `|` and delegates to `from_native_constraint`
 /// for each segment. Schemes with entirely different range syntax can override
 /// `from_native` directly.
-pub trait NativeConstraintConverter: VersionType {
+pub trait NativeVersionConverter: VersionType {
     /// The vers scheme identifier for this version type (e.g. `"deb"`, `"semver"`).
     const SCHEME_NAME: &'static str;
 
@@ -47,7 +48,8 @@ pub trait NativeConstraintConverter: VersionType {
 
     /// Parse a full native range string into one or more standard `VersionConstraint`s.
     ///
-    /// This is the main entry point called by `VersVersionRange::from_str`. It receives
+    /// This is called by `VersVersionRange::from_str` (for the `vers:scheme/...` format)
+    /// and by [`Self::from_native_string`] (for bare native strings). It receives
     /// the entire constraint portion of the vers string (after the scheme prefix).
     ///
     /// The default implementation splits on `|` and calls [`Self::from_native_constraint`] for

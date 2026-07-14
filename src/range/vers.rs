@@ -24,7 +24,7 @@
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
 use crate::constraint::VersionType;
-use crate::constraint::NativeConstraintConverter;
+use crate::constraint::NativeVersionConverter;
 use crate::error::VersError;
 use crate::range::VersionRange;
 use serde::{Deserialize, Serialize};
@@ -380,7 +380,7 @@ impl<V: VersionType> VersVersionRange<V> {
     }
 }
 
-impl<V: NativeConstraintConverter> FromStr for VersVersionRange<V> {
+impl<V: NativeVersionConverter> FromStr for VersVersionRange<V> {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {

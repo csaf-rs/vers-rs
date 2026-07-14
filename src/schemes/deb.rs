@@ -1,5 +1,5 @@
 use crate::VersError;
-use crate::constraint::NativeConstraintConverter;
+use crate::constraint::NativeVersionConverter;
 use crate::VersionConstraint;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -39,7 +39,7 @@ impl Default for DebVersion {
     }
 }
 
-impl NativeConstraintConverter for DebVersion {
+impl NativeVersionConverter for DebVersion {
     const SCHEME_NAME: &'static str = "deb";
 
     /// Parse a Debian native constraint string into standard vers constraints.

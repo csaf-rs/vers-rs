@@ -6,7 +6,7 @@ pub mod range;
 pub mod schemes;
 
 pub use comparator::Comparator;
-pub use constraint::NativeConstraintConverter;
+pub use constraint::NativeVersionConverter;
 pub use constraint::VersionConstraint;
 pub use error::VersError;
 pub use range::VersionRange;
@@ -75,7 +75,7 @@ pub fn contains(range: &DynamicVersionRange, version_str: String) -> Result<bool
 ///
 /// This function accepts a scheme name and a native range string directly, without
 /// requiring the `vers:scheme/` prefix. It delegates to the scheme's
-/// [`NativeConstraintConverter`] implementation.
+/// [`NativeVersionConverter`] implementation.
 ///
 /// # Arguments
 ///
@@ -98,7 +98,7 @@ pub fn contains(range: &DynamicVersionRange, version_str: String) -> Result<bool
 /// ```
 #[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub fn parse_native(scheme: &str, raw: &str) -> Result<DynamicVersionRange, VersError> {
-    DynamicVersionRange::from_native_constraint(scheme, raw)
+    DynamicVersionRange::parse_native(scheme, raw)
 }
 
 #[cfg(test)]
@@ -328,8 +328,8 @@ mod tests {
         let range1: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
         assert!(contains(&range1, "1.0~beta".to_string()).unwrap());
 
-        // 1:1.0 > 2.0 because epoch 1 > 0
         let range2: DynamicVersionRange = "vers:deb/>>2.0".parse().unwrap();
+        // 1:1.0 > 2.0 because epoch 1 > 0
         assert!(contains(&range2, "1:1.0".to_string()).unwrap());
         assert!(!contains(&range2, "2.0".to_string()).unwrap());
     }

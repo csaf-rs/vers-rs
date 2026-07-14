@@ -1,5 +1,5 @@
 use crate::VersError;
-use crate::constraint::NativeConstraintConverter;
+use crate::constraint::NativeVersionConverter;
 use derive_more::Display;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ pub static SEMVER_SCHEME: &str = "semver/npm";
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct SemVer(Version);
 
-impl NativeConstraintConverter for SemVer {
+impl NativeVersionConverter for SemVer {
     const SCHEME_NAME: &'static str = "semver";
 }
 
