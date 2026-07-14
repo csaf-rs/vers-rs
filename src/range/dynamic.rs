@@ -108,9 +108,7 @@ impl DynamicVersionRange {
     /// ```
     pub fn parse_native(scheme: &str, raw: &str) -> Result<Self, VersError> {
         let inner = match scheme {
-            "semver" | "npm" => {
-                DynamicVersionRangeInner::SemVer(SemVer::from_native_string(raw)?)
-            }
+            "semver" | "npm" => DynamicVersionRangeInner::SemVer(SemVer::from_native_string(raw)?),
             "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(raw)?),
             _ => return Err(VersError::UnsupportedVersioningScheme(scheme.to_string())),
         };
@@ -311,10 +309,10 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
 
 #[cfg(test)]
 mod tests {
+    use super::DynamicVersionRange;
     use crate::Comparator;
     use crate::VersError;
     use crate::range::VersionRange;
-    use super::DynamicVersionRange;
 
     #[test]
     fn test_parse_simple() {

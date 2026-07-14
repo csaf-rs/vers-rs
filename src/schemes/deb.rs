@@ -1,6 +1,6 @@
 use crate::VersError;
-use crate::constraint::NativeVersionConverter;
 use crate::VersionConstraint;
+use crate::constraint::NativeVersionConverter;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::str::FromStr;

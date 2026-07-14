@@ -23,8 +23,8 @@
 
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
-use crate::constraint::VersionType;
 use crate::constraint::NativeVersionConverter;
+use crate::constraint::VersionType;
 use crate::error::VersError;
 use crate::range::VersionRange;
 use serde::{Deserialize, Serialize};
@@ -465,12 +465,12 @@ impl<V: VersionType> Display for VersVersionRange<V> {
 
 #[cfg(test)]
 mod tests {
+    use super::VersVersionRange;
     use crate::Comparator;
     use crate::VersError;
     use crate::VersionConstraint;
     use crate::range::VersionRange;
     use crate::schemes::semver::SemVer;
-    use super::VersVersionRange;
 
     #[test]
     fn test_invalid_scheme() {

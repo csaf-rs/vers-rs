@@ -7,8 +7,8 @@
 //! and a version string. It defines a condition that a version must satisfy to be
 //! considered within a version range.
 
-use crate::{Comparator, VersError};
 use crate::VersVersionRange;
+use crate::{Comparator, VersError};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
@@ -66,7 +66,10 @@ pub trait NativeVersionConverter: VersionType {
             return Err(VersError::EmptyConstraints);
         }
 
-        segments.iter().map(|s| Self::from_native_constraint(s)).collect()
+        segments
+            .iter()
+            .map(|s| Self::from_native_constraint(s))
+            .collect()
     }
 
     /// Parse a single native constraint string into one or more `VersionConstraint`s.
