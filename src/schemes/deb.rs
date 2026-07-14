@@ -253,3 +253,38 @@ fn compare_digit_sequence(a: &mut &str, b: &mut &str) -> Ordering {
         ord => ord,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Comparator;
+    use crate::range::VersionRange;
+    use crate::range::dynamic::DynamicVersionRange;
+
+    #[test]
+    fn test_dynamic_parse_deb() {
+        let range: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        assert_eq!(range.versioning_scheme(), "deb");
+        assert_eq!(range.constraints().len(), 1);
+        assert_eq!(range.constraints()[0].comparator, Comparator::LessThan);
+        assert_eq!(range.constraints()[0].version.to_string(), "1.0");
+    }
+
+    #[test]
+    fn test_deb_version_ordering_basic() {
+        let range: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        assert!(range.contains("0.9".to_string()).unwrap());
+        assert!(!range.contains("1.0".to_string()).unwrap());
+    }
+
+    #[test]
+    fn test_deb_version_ordering_tilde_and_epoch() {
+        // 1.0~beta < 1.0
+        let range1: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        assert!(range1.contains("1.0~beta".to_string()).unwrap());
+
+        let range2: DynamicVersionRange = "vers:deb/>>2.0".parse().unwrap();
+        // 1:1.0 > 2.0 because epoch 1 > 0
+        assert!(range2.contains("1:1.0".to_string()).unwrap());
+        assert!(!range2.contains("2.0".to_string()).unwrap());
+    }
+}

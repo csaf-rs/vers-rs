@@ -462,3 +462,71 @@ impl<V: VersionType> Display for VersVersionRange<V> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Comparator;
+    use crate::VersError;
+    use crate::VersionConstraint;
+    use crate::range::VersionRange;
+    use crate::schemes::semver::SemVer;
+    use super::VersVersionRange;
+
+    #[test]
+    fn test_invalid_scheme() {
+        let result: Result<VersVersionRange<SemVer>, _> = "foo:npm/1.2.3".parse();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), VersError::InvalidScheme);
+    }
+
+    #[test]
+    fn test_missing_scheme() {
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:/1.2.3".parse();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), VersError::MissingVersioningScheme);
+    }
+
+    #[test]
+    fn test_empty_constraints() {
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/".parse();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), VersError::EmptyConstraints);
+    }
+
+    #[test]
+    fn test_duplicate_version() {
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/1.2.3|1.2.3".parse();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            VersError::DuplicateVersion(_)
+        ));
+    }
+
+    #[test]
+    fn test_normalize() {
+        let mut range = VersVersionRange::<SemVer>::new(
+            "npm".to_string(),
+            vec![
+                VersionConstraint::new(Comparator::GreaterThanOrEqual, "1.0.0".parse().unwrap()),
+                VersionConstraint::new(Comparator::GreaterThan, "1.5.0".parse().unwrap()),
+                VersionConstraint::new(Comparator::LessThan, "3.0.0".parse().unwrap()),
+                VersionConstraint::new(Comparator::LessThanOrEqual, "2.0.0".parse().unwrap()),
+            ],
+        );
+
+        match range.normalize_and_validate() {
+            Ok(_) => {}
+            Err(e) => panic!("{}", e),
+        }
+
+        assert_eq!(range.constraints().len(), 2);
+        assert_eq!(
+            range.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
+        assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
+        assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
+        assert_eq!(range.constraints()[1].version.to_string(), "3.0.0");
+    }
+}
