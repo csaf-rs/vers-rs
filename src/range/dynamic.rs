@@ -43,7 +43,7 @@ enum DynamicVersionRangeInner {
 /// assert!(npm_range.contains("1.5.0".to_string()).unwrap());
 /// assert!(!npm_range.contains("2.0.0".to_string()).unwrap());
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct DynamicVersionRange {
@@ -51,14 +51,12 @@ pub struct DynamicVersionRange {
     cached_constraints: OnceLock<Vec<VersionConstraint<String>>>,
 }
 
-// Custom PartialEq and Eq implementations that only compare the inner range, not the cache
+// Custom PartialEq implementation that only compares the inner range, not the cache
 impl PartialEq for DynamicVersionRange {
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
 }
-
-impl Eq for DynamicVersionRange {}
 
 // Custom Clone implementation that clones the inner range but not the cache
 impl Clone for DynamicVersionRange {
@@ -108,8 +106,10 @@ impl DynamicVersionRange {
     /// ```
     pub fn parse_native(scheme: &str, raw: &str) -> Result<Self, VersError> {
         let inner = match scheme {
-            "semver" | "npm" => DynamicVersionRangeInner::SemVer(SemVer::from_native_string(raw)?),
-            "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(raw)?),
+            "semver" | "npm" => {
+                DynamicVersionRangeInner::SemVer(SemVer::from_native_string(scheme, raw)?)
+            }
+            "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(scheme, raw)?),
             _ => return Err(VersError::UnsupportedVersioningScheme(scheme.to_string())),
         };
 
@@ -492,5 +492,34 @@ mod tests {
         assert!(!range.contains("1.5.0".to_string()).unwrap());
         assert!(!range.contains("2.0.0".to_string()).unwrap());
         assert!(!range.contains("0.9.0".to_string()).unwrap());
+    }
+
+    #[test]
+    fn test_parse_native_preserves_npm_scheme() {
+        // The "npm" label must be preserved, not converted to "semver"
+        let range = DynamicVersionRange::parse_native("npm", ">=1.0.0|<2.0.0").unwrap();
+        assert_eq!(range.versioning_scheme(), "npm");
+    }
+
+    #[test]
+    fn test_parse_native_preserves_semver_scheme() {
+        let range = DynamicVersionRange::parse_native("semver", ">=1.0.0|<2.0.0").unwrap();
+        assert_eq!(range.versioning_scheme(), "semver");
+    }
+
+    #[test]
+    fn test_parse_native_normalizes() {
+        // parse_native should run normalize_and_validate:
+        // >1.0.0|>2.0.0 simplifies to >1.0.0
+        let range = DynamicVersionRange::parse_native("npm", ">1.0.0|>2.0.0").unwrap();
+        assert_eq!(range.constraints().len(), 1);
+        assert_eq!(range.constraints()[0].comparator, Comparator::GreaterThan);
+        assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
+    }
+
+    #[test]
+    fn test_parse_native_roundtrip() {
+        let range = DynamicVersionRange::parse_native("npm", ">=1.0.0|<2.0.0").unwrap();
+        assert_eq!(range.to_string(), "vers:npm/>=1.0.0|<2.0.0");
     }
 }

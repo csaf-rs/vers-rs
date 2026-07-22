@@ -14,21 +14,21 @@ the [vers-spec](https://github.com/package-url/vers-spec).
 
 ```rust
 use vers_rs::schemes::semver::*;
-use vers_rs::{parse, contains, GenericVersionRange};
+use vers_rs::{parse, VersVersionRange};
 use vers_rs::range::VersionRange;
 
 // Parse a version range specifier with an explicit type
-let range: GenericVersionRange<SemVer> = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
+let range: VersVersionRange<SemVer> = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
 
 // Parse a version range specifier with dynamic dispatch
 let dynamic_range = parse("vers:npm/>=1.0.0|<2.0.0").unwrap();
 
 // Check if a version is within the range
-assert!(range.contains(&"1.5.0".parse().unwrap()).unwrap());
-assert!(!range.contains(&"2.0.0".parse().unwrap()).unwrap());
+assert!(range.contains("1.5.0".parse().unwrap()).unwrap());
+assert!(!range.contains("2.0.0".parse().unwrap()).unwrap());
 
-assert!(dynamic_range.contains("1.5.0").unwrap());
-assert!(!dynamic_range.contains("2.0.0").unwrap());
+assert!(dynamic_range.contains("1.5.0".to_string()).unwrap());
+assert!(!dynamic_range.contains("2.0.0".to_string()).unwrap());
 ```
 
 ## Features

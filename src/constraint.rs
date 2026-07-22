@@ -36,14 +36,20 @@ pub trait NativeVersionConverter: VersionType {
     /// Parse a native range string into a fully parsed `VersVersionRange`.
     ///
     /// This is the main entry point for converting native syntax into vers ranges.
-    /// The default implementation calls [`Self::from_native`] and wraps
-    /// the result with [`Self::SCHEME_NAME`]. Schemes whose native syntax
-    /// requires special handling can override this directly.
-    fn from_native_string(raw: &str) -> Result<VersVersionRange<Self>, VersError> {
-        Ok(VersVersionRange::new(
-            Self::SCHEME_NAME.to_string(),
-            Self::from_native(raw)?,
-        ))
+    /// The default implementation calls [`Self::from_native`] to parse the
+    /// constraints, wraps the result with the given `scheme` name, and runs
+    /// [`VersVersionRange::normalize_and_validate`] to ensure the range is in
+    /// canonical form. Schemes whose native syntax requires special handling
+    /// can override this directly.
+    ///
+    /// # Arguments
+    ///
+    /// * `scheme` - The versioning scheme name (e.g. `"deb"`, `"semver"`, `"npm"`)
+    /// * `raw` - The native range string
+    fn from_native_string(scheme: &str, raw: &str) -> Result<VersVersionRange<Self>, VersError> {
+        let mut range = VersVersionRange::new(scheme.to_string(), Self::from_native(raw)?);
+        range.normalize_and_validate()?;
+        Ok(range)
     }
 
     /// Parse a full native range string into one or more standard `VersionConstraint`s.

@@ -1,5 +1,6 @@
 use crate::VersError;
 use crate::VersionConstraint;
+use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -22,7 +23,7 @@ macro_rules! deb_format_error {
 /// - Upstream version vs. Debian revision separated by last '-'
 /// - Tilde '~' sorts before the end and before any other character
 /// - Sequences of digits are compared numerically; non-digits lexicographically
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, Serialize, Deserialize)]
 pub struct DebVersion {
     epoch: u64,
     upstream: String,
@@ -44,12 +45,53 @@ impl NativeVersionConverter for DebVersion {
 
     /// Parse a Debian native constraint string into standard vers constraints.
     ///
-    /// Debian defines `>>` (strictly greater than) and `<<` (strictly less than)
-    /// as native comparison operators. This method converts them to the
-    /// standard `>` and `<` operators and delegates to the vers parser.
+    /// Debian defines the following comparison operators:
+    /// - `<<` (strictly less than) → vers `<`
+    /// - `<=` (less than or equal) → vers `<=`
+    /// - `=` (exactly equal) → vers `=`
+    /// - `>=` (greater than or equal) → vers `>=`
+    /// - `>>` (strictly greater than) → vers `>`
+    ///
+    /// Single `<`, `>`, and `!=` are **not** valid Debian comparators and will
+    /// be rejected. Invalid combinations like `>>=` or `<<=` are also rejected
+    /// because the remaining `=` cannot start a Debian version string.
     fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
-        let converted = raw.replace(">>", ">").replace("<<", "<");
-        VersionConstraint::<Self>::parse(&converted)
+        let raw = raw.trim();
+
+        if raw.is_empty() {
+            return Err(VersError::InvalidConstraint("Empty constraint".to_string()));
+        }
+
+        // Parse and validate the Debian comparator prefix.
+        // Valid Debian comparators: <<, <=, =, >=, >>
+        // Single <, >, and != are NOT valid Debian comparators.
+        let (comparator, version_str) = if let Some(stripped) = raw.strip_prefix("<<") {
+            (Comparator::LessThan, stripped)
+        } else if let Some(stripped) = raw.strip_prefix("<=") {
+            (Comparator::LessThanOrEqual, stripped)
+        } else if let Some(stripped) = raw.strip_prefix(">>") {
+            (Comparator::GreaterThan, stripped)
+        } else if let Some(stripped) = raw.strip_prefix(">=") {
+            (Comparator::GreaterThanOrEqual, stripped)
+        } else if let Some(stripped) = raw.strip_prefix('=') {
+            (Comparator::Equal, stripped)
+        } else {
+            return Err(VersError::InvalidConstraint(format!(
+                "invalid Debian comparator in '{}': valid comparators are <<, <=, =, >=, >>",
+                raw
+            )));
+        };
+
+        let version_str = version_str.trim();
+        if version_str.is_empty() {
+            return Err(VersError::InvalidConstraint("Missing version".to_string()));
+        }
+
+        let parsed_version = version_str.parse::<Self>().map_err(|_| {
+            VersError::InvalidConstraint(format!("Failed to parse version: {}", version_str))
+        })?;
+
+        Ok(VersionConstraint::new(comparator, parsed_version))
     }
 }
 
@@ -180,6 +222,15 @@ impl PartialOrd for DebVersion {
     }
 }
 
+// Implement PartialEq based on Ord, so that equality is consistent with
+// ordering. This is necessary because `Ord::cmp` treats an empty debian_revision
+// as "0", which would diverge from a field-by-field derived equality.
+impl PartialEq for DebVersion {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
 /// Compare two version part strings according to Debian's dpkg algorithm.
 /// Alternates between comparing non-digit and digit sequences.
 fn compare_part(a: &str, b: &str) -> Ordering {
@@ -257,6 +308,7 @@ fn compare_digit_sequence(a: &mut &str, b: &mut &str) -> Ordering {
 #[cfg(test)]
 mod tests {
     use crate::Comparator;
+    use crate::VersError;
     use crate::range::VersionRange;
     use crate::range::dynamic::DynamicVersionRange;
 
@@ -286,5 +338,94 @@ mod tests {
         // 1:1.0 > 2.0 because epoch 1 > 0
         assert!(range2.contains("1:1.0".to_string()).unwrap());
         assert!(!range2.contains("2.0".to_string()).unwrap());
+    }
+
+    #[test]
+    fn test_deb_valid_comparators() {
+        // << maps to LessThan
+        let range: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        assert_eq!(range.constraints()[0].comparator, Comparator::LessThan);
+
+        // <= maps to LessThanOrEqual
+        let range: DynamicVersionRange = "vers:deb/<=1.0".parse().unwrap();
+        assert_eq!(
+            range.constraints()[0].comparator,
+            Comparator::LessThanOrEqual
+        );
+
+        // = maps to Equal
+        let range: DynamicVersionRange = "vers:deb/=1.0".parse().unwrap();
+        assert_eq!(range.constraints()[0].comparator, Comparator::Equal);
+
+        // >= maps to GreaterThanOrEqual
+        let range: DynamicVersionRange = "vers:deb/>=1.0".parse().unwrap();
+        assert_eq!(
+            range.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
+
+        // >> maps to GreaterThan
+        let range: DynamicVersionRange = "vers:deb/>>1.0".parse().unwrap();
+        assert_eq!(range.constraints()[0].comparator, Comparator::GreaterThan);
+    }
+
+    #[test]
+    fn test_deb_invalid_comparators_rejected() {
+        // Single < is not a valid Debian comparator
+        let result: Result<DynamicVersionRange, VersError> = "vers:deb/<1.0".parse();
+        assert!(result.is_err());
+
+        // Single > is not a valid Debian comparator
+        let result: Result<DynamicVersionRange, VersError> = "vers:deb/>1.0".parse();
+        assert!(result.is_err());
+
+        // != is not a valid Debian comparator
+        let result: Result<DynamicVersionRange, VersError> = "vers:deb/!=1.0".parse();
+        assert!(result.is_err());
+
+        // >>= is not a valid Debian comparator (>> with version "=1.0" fails)
+        let result: Result<DynamicVersionRange, VersError> = "vers:deb/>>=1.0".parse();
+        assert!(result.is_err());
+
+        // <<= is not a valid Debian comparator (<< with version "=1.0" fails)
+        let result: Result<DynamicVersionRange, VersError> = "vers:deb/<<=1.0".parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_deb_equality_consistent_with_ordering() {
+        use super::DebVersion;
+
+        // A version with empty debian_revision should equal one with "0"
+        let a = DebVersion {
+            epoch: 0,
+            upstream: "1.0".to_string(),
+            debian_revision: String::new(),
+        };
+        let b = DebVersion {
+            epoch: 0,
+            upstream: "1.0".to_string(),
+            debian_revision: "0".to_string(),
+        };
+
+        // Equality must be consistent with Ord::cmp
+        assert_eq!(a, b);
+        assert!(!(a < b));
+        assert!(!(a > b));
+    }
+
+    #[test]
+    fn test_deb_parse_native_preserves_scheme() {
+        let range = DynamicVersionRange::parse_native("deb", "<<1.0").unwrap();
+        assert_eq!(range.versioning_scheme(), "deb");
+    }
+
+    #[test]
+    fn test_deb_parse_native_normalizes() {
+        // parse_native should normalize: >1.0|>2.0 simplifies to >1.0
+        let range = DynamicVersionRange::parse_native("deb", ">>1.0|>>2.0").unwrap();
+        assert_eq!(range.constraints().len(), 1);
+        assert_eq!(range.constraints()[0].comparator, Comparator::GreaterThan);
+        assert_eq!(range.constraints()[0].version.to_string(), "1.0");
     }
 }
