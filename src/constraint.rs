@@ -7,17 +7,98 @@
 //! and a version string. It defines a condition that a version must satisfy to be
 //! considered within a version range.
 
+use crate::VersVersionRange;
 use crate::{Comparator, VersError};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
 use std::str::FromStr;
 
-/// A trait alias for version types that can be used in version constraints and ranges.
-pub trait VersionType: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
+/// Trait for version types that support native (scheme-specific) syntax.
+///
+/// Some versioning schemes define their own syntax that differs from the standard
+/// vers pipe-delimited format. For example:
+/// - Debian defines `>>` (strictly greater) and `<<` (strictly less)
+/// - Future schemes may define interval notation like `[1.0;2.0)` meaning `>=1.0|<2.0`
+///
+/// This trait provides three entry points:
+/// - `from_native_string`: parses a native range string into a full `VersVersionRange`
+/// - `from_native`: parses a full native range string into vers constraints
+/// - `from_native_constraint`: parses a single native constraint into a vers constraint
+///
+/// The default `from_native` splits on `|` and delegates to `from_native_constraint`
+/// for each segment. Schemes with entirely different range syntax can override
+/// `from_native` directly.
+pub trait NativeVersionConverter: VersionType {
+    /// The vers scheme identifier for this version type (e.g. `"deb"`, `"semver"`).
+    const SCHEME_NAME: &'static str;
 
-// Blanket implementation for any type that satisfies the bounds
-impl<T> VersionType for T where T: FromStr + Default + Ord + Clone + Display + Debug + Serialize {}
+    /// Parse a native range string into a fully parsed `VersVersionRange`.
+    ///
+    /// This is the main entry point for converting native syntax into vers ranges.
+    /// The default implementation calls [`Self::from_native`] to parse the
+    /// constraints, wraps the result with the given `scheme` name, and runs
+    /// [`VersVersionRange::normalize_and_validate`] to ensure the range is in
+    /// canonical form. Schemes whose native syntax requires special handling
+    /// can override this directly.
+    ///
+    /// # Arguments
+    ///
+    /// * `scheme` - The versioning scheme name (e.g. `"deb"`, `"semver"`, `"npm"`)
+    /// * `raw` - The native range string
+    fn from_native_string(scheme: &str, raw: &str) -> Result<VersVersionRange<Self>, VersError> {
+        let mut range = VersVersionRange::new(scheme.to_string(), Self::from_native(raw)?);
+        range.normalize_and_validate()?;
+        Ok(range)
+    }
+
+    /// Parse a full native range string into one or more standard `VersionConstraint`s.
+    ///
+    /// This is called by `VersVersionRange::from_str` (for the `vers:scheme/...` format)
+    /// and by [`Self::from_native_string`] (for bare native strings). It receives
+    /// the entire constraint portion of the vers string (after the scheme prefix).
+    ///
+    /// The default implementation splits on `|` and calls [`Self::from_native_constraint`] for
+    /// each segment. Schemes whose native syntax doesn't use `|` as a delimiter
+    /// should override this method.
+    fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
+        let segments: Vec<&str> = raw
+            .trim_matches('|')
+            .split('|')
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if segments.is_empty() {
+            return Err(VersError::EmptyConstraints);
+        }
+
+        segments
+            .iter()
+            .map(|s| Self::from_native_constraint(s))
+            .collect()
+    }
+
+    /// Parse a single native constraint string into one or more `VersionConstraint`s.
+    ///
+    /// The default implementation delegates to the standard vers constraint parser,
+    /// assuming a single constraint. Schemes with native operators (e.g. `<<`, `>>`)
+    /// override this to handle their own syntax.
+    fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
+        VersionConstraint::<Self>::parse(raw)
+    }
+}
+
+/// A trait alias for version types that can be used in version constraints and ranges.
+pub trait VersionType:
+    FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize
+{
+}
+
+/// Blanket implementation for any type that satisfies the bounds
+impl<T> VersionType for T where
+    T: FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize
+{
+}
 
 /// A single version constraint with a comparator and version.
 ///

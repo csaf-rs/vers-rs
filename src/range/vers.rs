@@ -23,6 +23,7 @@
 
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
+use crate::constraint::NativeVersionConverter;
 use crate::constraint::VersionType;
 use crate::error::VersError;
 use crate::range::VersionRange;
@@ -45,7 +46,7 @@ use std::str::FromStr;
 /// - `vers:pypi/*` (any version)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-pub struct GenericVersionRange<V: VersionType> {
+pub struct VersVersionRange<V: VersionType> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
     pub versioning_scheme: String,
 
@@ -53,7 +54,7 @@ pub struct GenericVersionRange<V: VersionType> {
     pub constraints: Vec<VersionConstraint<V>>,
 }
 
-impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
+impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
     /// Get the versioning scheme used by this range.
     ///
     /// # Returns
@@ -86,15 +87,15 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
     /// # Examples
     ///
     /// ```
-    /// use vers_rs::{parse, GenericVersionRange};
+    /// use vers_rs::{parse, VersVersionRange};
     /// use vers_rs::range::VersionRange;
     /// use vers_rs::schemes::semver::SemVer;
     ///
-    /// let range = "vers:npm/>=1.0.0|<2.0.0".parse::<GenericVersionRange<SemVer>>().unwrap();
-    /// assert!(range.contains(&"1.5.0".parse().unwrap()).unwrap());
-    /// assert!(!range.contains(&"2.0.0".parse().unwrap()).unwrap());
+    /// let range = "vers:npm/>=1.0.0|<2.0.0".parse::<VersVersionRange<SemVer>>().unwrap();
+    /// assert!(range.contains("1.5.0".parse().unwrap()).unwrap());
+    /// assert!(!range.contains("2.0.0".parse().unwrap()).unwrap());
     /// ```
-    fn contains(&self, version: &V) -> Result<bool, VersError> {
+    fn contains(&self, version: V) -> Result<bool, VersError> {
         // If the constraint list contains only "*", then the version is in the range
         if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
             return Ok(true);
@@ -103,10 +104,12 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
         // Check for exact matches with equality and inequality comparators
         for constraint in &self.constraints {
             match constraint.comparator {
-                Equal | GreaterThanOrEqual | LessThanOrEqual if version == &constraint.version => {
-                    return Ok(true);
+                Equal | GreaterThanOrEqual | LessThanOrEqual => {
+                    if version == constraint.version {
+                        return Ok(true);
+                    }
                 }
-                NotEqual if version == &constraint.version => {
+                NotEqual if version == constraint.version => {
                     return Ok(false);
                 }
                 _ => {}
@@ -138,7 +141,7 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
             // and the tested version is less than the current version
             if first {
                 if (current.comparator == LessThan || current.comparator == LessThanOrEqual)
-                    && version < &current.version
+                    && version < current.version
                 {
                     return Ok(true);
                 }
@@ -149,7 +152,7 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
             // and the tested version is greater than the current version
             if range_iterator.peek().is_none()
                 && (current.comparator == GreaterThan || current.comparator == GreaterThanOrEqual)
-                && version > &current.version
+                && version > current.version
             {
                 return Ok(true);
             }
@@ -160,9 +163,9 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
                 // and the tested version is greater than the current version
                 // and the tested version is less than the next version
                 if matches!(current.comparator, GreaterThan | GreaterThanOrEqual)
-                    && version > &current.version
+                    && version > current.version
                     && matches!(next.comparator, LessThan | LessThanOrEqual)
-                    && version < &next.version
+                    && version < next.version
                 {
                     return Ok(true);
                 }
@@ -173,12 +176,12 @@ impl<V: VersionType> VersionRange<&V> for GenericVersionRange<V> {
         Ok(false)
     }
 
-    fn constraints(&self) -> &Vec<VersionConstraint<impl VersionType>> {
+    fn constraints(&self) -> &Vec<VersionConstraint<V>> {
         &self.constraints
     }
 }
 
-impl<V: VersionType> GenericVersionRange<V> {
+impl<V: VersionType> VersVersionRange<V> {
     /// Create a new version range with the given versioning scheme and constraints.
     ///
     /// # Arguments
@@ -375,7 +378,7 @@ impl<V: VersionType> GenericVersionRange<V> {
     }
 }
 
-impl<V: VersionType> FromStr for GenericVersionRange<V> {
+impl<V: NativeVersionConverter> FromStr for VersVersionRange<V> {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -420,35 +423,20 @@ impl<V: VersionType> FromStr for GenericVersionRange<V> {
             });
         }
 
-        // Split constraints on each pipe
-        let constraint_strs: Vec<&str> = constraints_str
-            .trim_matches('|')
-            .split('|')
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if constraint_strs.is_empty() {
-            return Err(VersError::EmptyConstraints);
-        }
-
-        // Parse each constraint
-        let mut constraints = Vec::new();
-        for constraint_str in constraint_strs {
-            let constraint = VersionConstraint::<V>::parse(constraint_str)?;
-            constraints.push(constraint);
-        }
+        // Delegate constraint parsing entirely to the scheme's native converter
+        let constraints = V::from_native(constraints_str)?;
 
         let mut range = Self {
             versioning_scheme,
             constraints,
         };
-        range.normalize_and_validate()?; // Use the combined function
+        range.normalize_and_validate()?;
 
         Ok(range)
     }
 }
 
-impl<V: VersionType> Display for GenericVersionRange<V> {
+impl<V: VersionType> Display for VersVersionRange<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "vers:{}/", self.versioning_scheme)?;
 
@@ -470,5 +458,73 @@ impl<V: VersionType> Display for GenericVersionRange<V> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::VersVersionRange;
+    use crate::Comparator;
+    use crate::VersError;
+    use crate::VersionConstraint;
+    use crate::range::VersionRange;
+    use crate::schemes::semver::SemVer;
+
+    #[test]
+    fn test_invalid_scheme() {
+        let result: Result<VersVersionRange<SemVer>, _> = "foo:npm/1.2.3".parse();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), VersError::InvalidScheme);
+    }
+
+    #[test]
+    fn test_missing_scheme() {
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:/1.2.3".parse();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), VersError::MissingVersioningScheme);
+    }
+
+    #[test]
+    fn test_empty_constraints() {
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/".parse();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), VersError::EmptyConstraints);
+    }
+
+    #[test]
+    fn test_duplicate_version() {
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/1.2.3|1.2.3".parse();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            VersError::DuplicateVersion(_)
+        ));
+    }
+
+    #[test]
+    fn test_normalize() {
+        let mut range = VersVersionRange::<SemVer>::new(
+            "npm".to_string(),
+            vec![
+                VersionConstraint::new(Comparator::GreaterThanOrEqual, "1.0.0".parse().unwrap()),
+                VersionConstraint::new(Comparator::GreaterThan, "1.5.0".parse().unwrap()),
+                VersionConstraint::new(Comparator::LessThan, "3.0.0".parse().unwrap()),
+                VersionConstraint::new(Comparator::LessThanOrEqual, "2.0.0".parse().unwrap()),
+            ],
+        );
+
+        match range.normalize_and_validate() {
+            Ok(_) => {}
+            Err(e) => panic!("{}", e),
+        }
+
+        assert_eq!(range.constraints().len(), 2);
+        assert_eq!(
+            range.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
+        assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
+        assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
+        assert_eq!(range.constraints()[1].version.to_string(), "3.0.0");
     }
 }
