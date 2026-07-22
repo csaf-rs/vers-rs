@@ -31,7 +31,7 @@ checksum = "bda628edc44c4bb645fbe0f758797143e4e07926f7ebf4e9bdfbd3d2ce621df3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.106",
  "unicode-xid",
 ]
 
@@ -166,7 +166,7 @@ checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -177,7 +177,7 @@ checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -205,23 +205,34 @@ dependencies = [
 ]
 
 [[package]]
-name = "thiserror"
-version = "2.0.17"
+name = "syn"
+version = "3.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f63587ca0f12b72a0600bcba1d40081f830876000bb46dd2337a3051618f4fc8"
+checksum = "53e9bae58849f64dfa4f5d5ae372c8341f7305f82a3868709269343628b659a3"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-ident",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09a43598840e33d5b0331f38c5e30d13bb11c11210a4b58f0d9b18a5a5eefcd9"
 dependencies = [
  "thiserror-impl",
 ]
 
 [[package]]
 name = "thiserror-impl"
-version = "2.0.17"
+version = "2.0.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ff15c8ecd7de3849db632e14d18d2571fa09dfc5ed93479bc4485c7a517c913"
+checksum = "43cbfe0cf76104d42a574802844187e84a305e531ed54455f11fbde0f10541cd"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 3.0.3",
 ]
 
 [[package]]
@@ -246,7 +257,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "serde_derive_internals",
- "syn",
+ "syn 2.0.106",
 ]
 
 [[package]]
@@ -299,7 +310,7 @@ dependencies = [
  "log",
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.106",
  "wasm-bindgen-shared",
 ]
 
@@ -321,7 +332,7 @@ checksum = "9f07d2f20d4da7b26400c9f4a0511e6e0345b040694e8a75bd41d578fa4421d7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn",
+ "syn 2.0.106",
  "wasm-bindgen-backend",
  "wasm-bindgen-shared",
 ]
