@@ -96,6 +96,11 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
     /// assert!(!range.contains("2.0.0".parse().unwrap()).unwrap());
     /// ```
     fn contains(&self, version: V) -> Result<bool, VersError> {
+        // If there are no constraints, nothing is contained
+        if self.constraints.is_empty() {
+            return Ok(false);
+        }
+
         // If the constraint list contains only "*", then the version is in the range
         if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
             return Ok(true);
@@ -116,9 +121,10 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
             }
         }
 
-        // If there are only NotEqual constraints, and we've checked them all without returning,
-        // then the version is in the range
-        if self.constraints.iter().all(|c| c.comparator == NotEqual) {
+        // If there are only NotEqual constraints (and at least one exists),
+        // and we've checked them all without returning, then the version is in the range
+        if !self.constraints.is_empty() && self.constraints.iter().all(|c| c.comparator == NotEqual)
+        {
             return Ok(true);
         }
 
@@ -440,6 +446,10 @@ impl<V: VersionType> Display for VersVersionRange<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "vers:{}/", self.versioning_scheme)?;
 
+        if self.constraints.is_empty() {
+            return Ok(());
+        }
+
         match self.constraints[0].comparator {
             Any => write!(f, "*")?,
             Equal => write!(f, "{}", self.constraints[0].version)?,
@@ -526,5 +536,20 @@ mod tests {
         assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
         assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
         assert_eq!(range.constraints()[1].version.to_string(), "3.0.0");
+    }
+
+    #[test]
+    fn test_empty_constraints_display() {
+        let range = VersVersionRange::<SemVer>::new("npm".to_string(), vec![]);
+        let display_str = range.to_string();
+        assert_eq!(display_str, "vers:npm/");
+    }
+
+    #[test]
+    fn test_empty_constraints_contains() {
+        let range = VersVersionRange::<SemVer>::new("npm".to_string(), vec![]);
+        let result = range.contains("1.0.0".parse().unwrap());
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
     }
 }
