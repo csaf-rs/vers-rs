@@ -45,6 +45,7 @@ use std::str::FromStr;
 /// - `vers:npm/>=1.0.0|<2.0.0` (a range of versions)
 /// - `vers:pypi/*` (any version)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RawVersVersionRange<V>")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct VersVersionRange<V: VersionType> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
@@ -52,6 +53,25 @@ pub struct VersVersionRange<V: VersionType> {
 
     /// The list of version constraints
     pub constraints: Vec<VersionConstraint<V>>,
+}
+/// Raw JSON serde helper structure for VersVersionRange to normalize and validte on "Deserialize"
+#[derive(Deserialize)]
+struct RawVersVersionRange<V: VersionType> {
+    versioning_scheme: String,
+    constraints: Vec<VersionConstraint<V>>,
+}
+
+impl<V: VersionType> TryFrom<RawVersVersionRange<V>> for VersVersionRange<V> {
+    type Error = String; // or a string error that serde can map
+
+    fn try_from(raw: RawVersVersionRange<V>) -> Result<Self, Self::Error> {
+        let mut range = VersVersionRange {
+            versioning_scheme: raw.versioning_scheme,
+            constraints: raw.constraints,
+        };
+        range.normalize_and_validate().map_err(|e| e.to_string())?;
+        Ok(range)
+    }
 }
 
 impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
@@ -551,5 +571,17 @@ mod tests {
         let result = range.contains("1.0.0".parse().unwrap());
         assert!(result.is_ok());
         assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_deserialize_empty_constraints_fails() {
+        // Construct a JSON representation of a range with empty constraints
+        let json_data = r#"{
+            "versioning_scheme": "npm",
+            "constraints": []
+        }"#;
+
+        let result: Result<VersVersionRange<SemVer>, _> = serde_json::from_str(json_data);
+        assert!(result.is_err());
     }
 }
