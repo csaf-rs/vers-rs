@@ -143,7 +143,7 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
 
         // If there are only NotEqual constraints (and at least one exists),
         // and we've checked them all without returning, then the version is in the range
-        if !self.constraints.is_empty() && self.constraints.iter().all(|c| c.comparator == NotEqual)
+        if self.constraints.iter().all(|c| c.comparator == NotEqual)
         {
             return Ok(true);
         }
