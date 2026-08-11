@@ -552,7 +552,8 @@ mod tests {
 
     #[test]
     fn test_pypi_intervals() {
-        let range: Vec<VersionConstraint<PypiVersion>> = PypiVersion::from_native(">=1.0.0,<2.0.0").unwrap();
+        let range: Vec<VersionConstraint<PypiVersion>> =
+            PypiVersion::from_native(">=1.0.0,<2.0.0").unwrap();
         assert_eq!(range.len(), 2);
         assert_eq!(range[0].comparator, Comparator::GreaterThanOrEqual);
         assert_eq!(range[0].version.to_string(), "1.0.0");

@@ -3,7 +3,7 @@
 //! This module contains the `PypiVersion` struct and its implementation of the
 //! `NativeVersionConverter` trait, supporting PEP 440 specification rules
 //! (exact, comparative, compatible releases, arbitrary equality, wildcards, local identifiers, and epochs).
-//! 
+//!
 use crate::VersError;
 use crate::VersionConstraint;
 use crate::comparator::Comparator;
@@ -80,7 +80,12 @@ fn parse_pypi_version(s: &str) -> Vec<PypiItem> {
     // Split dev (.devN)
     let (rest, dev) = if let Some(idx) = rest.find(".dev") {
         let d_str = &rest[idx + 4..];
-        let d_val = d_str.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse::<i64>().unwrap_or(0);
+        let d_val = d_str
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse::<i64>()
+            .unwrap_or(0);
         (&rest[..idx], Some(d_val))
     } else {
         (rest, None)
@@ -89,7 +94,12 @@ fn parse_pypi_version(s: &str) -> Vec<PypiItem> {
     // Split post (.postN)
     let (rest, post) = if let Some(idx) = rest.find(".post") {
         let p_str = &rest[idx + 5..];
-        let p_val = p_str.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse::<i64>().unwrap_or(0);
+        let p_val = p_str
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect::<String>()
+            .parse::<i64>()
+            .unwrap_or(0);
         (&rest[..idx], Some(p_val))
     } else {
         (rest, None)
@@ -103,7 +113,12 @@ fn parse_pypi_version(s: &str) -> Vec<PypiItem> {
     for marker in &pre_markers {
         if let Some(idx) = rest.find(marker) {
             let pre_str = &rest[idx + marker.len()..];
-            let p_val = pre_str.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse::<i64>().unwrap_or(0);
+            let p_val = pre_str
+                .chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse::<i64>()
+                .unwrap_or(0);
             let canonical_pre = match *marker {
                 "alpha" | "a" => "a",
                 "beta" | "b" => "b",
@@ -117,7 +132,13 @@ fn parse_pypi_version(s: &str) -> Vec<PypiItem> {
 
     let release_nums = release_part
         .split('.')
-        .map(|tok| tok.chars().take_while(|c| c.is_ascii_digit()).collect::<String>().parse::<i64>().unwrap_or(0))
+        .map(|tok| {
+            tok.chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse::<i64>()
+                .unwrap_or(0)
+        })
         .collect();
 
     items.push(PypiItem::Release(release_nums));
@@ -188,7 +209,9 @@ impl Ord for PypiVersion {
             }
         }
 
-        if epoch1 != epoch2 { return epoch1.cmp(&epoch2); }
+        if epoch1 != epoch2 {
+            return epoch1.cmp(&epoch2);
+        }
         let rel_ord = compare_releases(&rel1, &rel2);
         if rel_ord != Ordering::Equal {
             return rel_ord;
@@ -197,7 +220,9 @@ impl Ord for PypiVersion {
         // PEP 440: Dev-release < Pre-release < Release < Post-release
         match (&dev1, &dev2) {
             (Some(d1), Some(d2)) => {
-                if d1 != d2 { return d1.cmp(d2); }
+                if d1 != d2 {
+                    return d1.cmp(d2);
+                }
             }
             (Some(_), None) => return Ordering::Less,
             (None, Some(_)) => return Ordering::Greater,
@@ -220,7 +245,9 @@ impl Ord for PypiVersion {
 
         match (&post1, &post2) {
             (Some(p1), Some(p2)) => {
-                if p1 != p2 { return p1.cmp(p2); }
+                if p1 != p2 {
+                    return p1.cmp(p2);
+                }
             }
             (Some(_), None) => return Ordering::Greater,
             (None, Some(_)) => return Ordering::Less,
@@ -246,7 +273,11 @@ impl NativeVersionConverter for PypiVersion {
             return Err(VersError::EmptyConstraints);
         }
 
-        let clauses: Vec<&str> = raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let clauses: Vec<&str> = raw
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
         let mut constraints = Vec::new();
 
         for clause in clauses {
@@ -274,17 +305,22 @@ impl PypiVersion {
         let raw = raw.trim();
 
         if raw == "*" || raw == "==*" {
-            return Ok(vec![VersionConstraint::new(Comparator::Any, PypiVersion::default())]);
+            return Ok(vec![VersionConstraint::new(
+                Comparator::Any,
+                PypiVersion::default(),
+            )]);
         }
 
         // Wildcard support: ==1.4.* -> >=1.4.0,<1.5.0
         if let Some(stripped) = raw.strip_prefix("==") {
             let ver_str = stripped.trim();
-            if ver_str.ends_with(".*") {
-                let base = &ver_str[..ver_str.len() - 2];
+            if let Some(base) = ver_str.strip_suffix(".*") {
                 let upper = calculate_pypi_wildcard_upper_bound(base);
                 return Ok(vec![
-                    VersionConstraint::new(Comparator::GreaterThanOrEqual, PypiVersion(format!("{}.0", base))),
+                    VersionConstraint::new(
+                        Comparator::GreaterThanOrEqual,
+                        PypiVersion(format!("{}.0", base)),
+                    ),
                     VersionConstraint::new(Comparator::LessThan, PypiVersion(upper)),
                 ]);
             }
@@ -320,7 +356,10 @@ impl PypiVersion {
             (Comparator::Equal, raw)
         };
 
-        Ok(vec![VersionConstraint::new(comp, PypiVersion(ver_str.trim().to_string()))])
+        Ok(vec![VersionConstraint::new(
+            comp,
+            PypiVersion(ver_str.trim().to_string()),
+        )])
     }
 }
 
@@ -328,14 +367,17 @@ fn calculate_pypi_compatible_upper_bound(v: &str) -> String {
     let core = v.split(['-', '+']).next().unwrap_or(v);
     let parts: Vec<&str> = core.split('.').collect();
 
-    if parts.len() >= 2 {
-        if let Ok(mut minor) = parts[parts.len() - 2].parse::<u64>() {
-            minor += 1;
-            let minor_str = minor.to_string();
-            let mut new_parts: Vec<String> = parts[..parts.len() - 2].iter().map(|s| s.to_string()).collect();
-            new_parts.push(minor_str);
-            return new_parts.join(".");
-        }
+    if parts.len() >= 2
+        && let Ok(mut minor) = parts[parts.len() - 2].parse::<u64>()
+    {
+        minor += 1;
+        let minor_str = minor.to_string();
+        let mut new_parts: Vec<String> = parts[..parts.len() - 2]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        new_parts.push(minor_str);
+        return new_parts.join(".");
     }
     v.to_string()
 }
