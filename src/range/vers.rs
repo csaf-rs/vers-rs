@@ -54,7 +54,7 @@ pub struct VersVersionRange<V: VersionType> {
     /// The list of version constraints
     pub constraints: Vec<VersionConstraint<V>>,
 }
-/// Raw JSON serde helper structure for VersVersionRange to normalize and validte on "Deserialize"
+/// Raw JSON serde helper structure for VersVersionRange to normalize and validate on "Deserialize"
 #[derive(Deserialize)]
 struct RawVersVersionRange<V: VersionType> {
     versioning_scheme: String,
