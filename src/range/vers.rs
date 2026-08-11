@@ -470,24 +470,14 @@ impl<V: VersionType> Display for VersVersionRange<V> {
             return Ok(());
         }
 
-        match self.constraints[0].comparator {
-            Any => write!(f, "*")?,
-            Equal => write!(f, "{}", self.constraints[0].version)?,
-            _ => write!(
-                f,
-                "{}{}",
-                self.constraints[0].comparator, self.constraints[0].version
-            )?,
-        }
+        // Convert all constraints to their string representations
+        let constraint_strs: Vec<String> = self.constraints
+            .iter()
+            .map(|c| c.to_string())
+            .collect();
 
-        for constraint in &self.constraints[1..] {
-            match constraint.comparator {
-                Equal => write!(f, "|{}", constraint.version)?,
-                _ => write!(f, "|{}{}", constraint.comparator, constraint.version)?,
-            }
-        }
-
-        Ok(())
+        // Join them together with '|'
+        write!(f, "{}", constraint_strs.join("|"))
     }
 }
 

@@ -11,7 +11,7 @@ use crate::VersVersionRange;
 use crate::{Comparator, VersError};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str::FromStr;
 
 /// Trait for version types that support native (scheme-specific) syntax.
@@ -217,5 +217,14 @@ impl<V: VersionType> VersionConstraint<V> {
             comparator,
             version: parsed_version,
         })
+    }
+}
+
+impl<V: VersionType> Display for VersionConstraint<V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self.comparator {
+            Comparator::Equal => write!(f, "{}", self.version), // Implicit equal prints no operator, currently still a matter of debate
+            _ => write!(f, "{}{}", self.comparator, self.version), // Others print operator + version
+        }
     }
 }
