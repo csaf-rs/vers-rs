@@ -12,7 +12,7 @@ pub static DEB_SCHEME: &str = "deb";
 /// Macro to create InvalidVersionFormat errors for Debian versions
 macro_rules! deb_format_error {
     ($s:expr, $msg:expr) => {
-        VersError::InvalidVersionFormat(DEB_SCHEME, $s.to_string(), $msg.into())
+        VersError::InvalidVersionFormat(DEB_SCHEME.into(), $s.to_string(), $msg.into())
     };
 }
 

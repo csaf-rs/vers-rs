@@ -66,7 +66,7 @@ impl FromStr for SemVer {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(SemVer(Version::parse(s).map_err(|e| {
-            VersError::InvalidVersionFormat(SEMVER_SCHEME, s.to_string(), e.to_string())
+            VersError::InvalidVersionFormat(SEMVER_SCHEME.into(), s.to_string(), e.to_string())
         })?))
     }
 }
