@@ -21,6 +21,7 @@
 //! It also implements `FromStr` for parsing a string into a `VersionRange` and
 //! `Display` for converting a `VersionRange` back to a string.
 
+use crate::Comparator;
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
 use crate::constraint::NativeVersionConverter;
@@ -469,8 +470,18 @@ impl<V: VersionType> Display for VersVersionRange<V> {
             return Ok(());
         }
 
-        // Convert all constraints to their string representations
-        let constraint_strs: Vec<String> = self.constraints.iter().map(|c| c.to_string()).collect();
+        // Convert all constraints to their string representations, handling 'Any' as '*'
+        let constraint_strs: Vec<String> = self
+            .constraints
+            .iter()
+            .map(|c| {
+                if c.comparator == Comparator::Any {
+                    "*".to_string()
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect();
 
         // Join them together with '|'
         write!(f, "{}", constraint_strs.join("|"))
