@@ -72,7 +72,7 @@ mod tests {
             r#"{"InvalidVersionFormat":["deb","<<1.0.0!","unexpected character '!'"]}"#
         );
 
-        // Deserialisation from a runtime String does not compile
+        // Deserialisation from a runtime String successfully compiles and roundtrips
         let roundtripped: VersError = serde_json::from_str(&json).unwrap();
         assert_eq!(roundtripped, original);
     }
