@@ -143,8 +143,7 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
 
         // If there are only NotEqual constraints (and at least one exists),
         // and we've checked them all without returning, then the version is in the range
-        if self.constraints.iter().all(|c| c.comparator == NotEqual)
-        {
+        if self.constraints.iter().all(|c| c.comparator == NotEqual) {
             return Ok(true);
         }
 
@@ -471,10 +470,7 @@ impl<V: VersionType> Display for VersVersionRange<V> {
         }
 
         // Convert all constraints to their string representations
-        let constraint_strs: Vec<String> = self.constraints
-            .iter()
-            .map(|c| c.to_string())
-            .collect();
+        let constraint_strs: Vec<String> = self.constraints.iter().map(|c| c.to_string()).collect();
 
         // Join them together with '|'
         write!(f, "{}", constraint_strs.join("|"))
