@@ -21,6 +21,7 @@
 //! It also implements `FromStr` for parsing a string into a `VersionRange` and
 //! `Display` for converting a `VersionRange` back to a string.
 
+use crate::Comparator;
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
 use crate::constraint::NativeVersionConverter;
@@ -45,6 +46,7 @@ use std::str::FromStr;
 /// - `vers:npm/>=1.0.0|<2.0.0` (a range of versions)
 /// - `vers:pypi/*` (any version)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RawVersVersionRange<V>")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct VersVersionRange<V: VersionType> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
@@ -52,6 +54,25 @@ pub struct VersVersionRange<V: VersionType> {
 
     /// The list of version constraints
     pub constraints: Vec<VersionConstraint<V>>,
+}
+/// Raw JSON serde helper structure for VersVersionRange to normalize and validate on "Deserialize"
+#[derive(Deserialize)]
+struct RawVersVersionRange<V: VersionType> {
+    versioning_scheme: String,
+    constraints: Vec<VersionConstraint<V>>,
+}
+
+impl<V: VersionType> TryFrom<RawVersVersionRange<V>> for VersVersionRange<V> {
+    type Error = String; // or a string error that serde can map
+
+    fn try_from(raw: RawVersVersionRange<V>) -> Result<Self, Self::Error> {
+        let mut range = VersVersionRange {
+            versioning_scheme: raw.versioning_scheme,
+            constraints: raw.constraints,
+        };
+        range.normalize_and_validate().map_err(|e| e.to_string())?;
+        Ok(range)
+    }
 }
 
 impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
@@ -96,6 +117,11 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
     /// assert!(!range.contains("2.0.0".parse().unwrap()).unwrap());
     /// ```
     fn contains(&self, version: V) -> Result<bool, VersError> {
+        // If there are no constraints, nothing is contained
+        if self.constraints.is_empty() {
+            return Ok(false);
+        }
+
         // If the constraint list contains only "*", then the version is in the range
         if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
             return Ok(true);
@@ -116,8 +142,8 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
             }
         }
 
-        // If there are only NotEqual constraints, and we've checked them all without returning,
-        // then the version is in the range
+        // If there are only NotEqual constraints (and at least one exists),
+        // and we've checked them all without returning, then the version is in the range
         if self.constraints.iter().all(|c| c.comparator == NotEqual) {
             return Ok(true);
         }
@@ -440,24 +466,25 @@ impl<V: VersionType> Display for VersVersionRange<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "vers:{}/", self.versioning_scheme)?;
 
-        match self.constraints[0].comparator {
-            Any => write!(f, "*")?,
-            Equal => write!(f, "{}", self.constraints[0].version)?,
-            _ => write!(
-                f,
-                "{}{}",
-                self.constraints[0].comparator, self.constraints[0].version
-            )?,
+        if self.constraints.is_empty() {
+            return Ok(());
         }
 
-        for constraint in &self.constraints[1..] {
-            match constraint.comparator {
-                Equal => write!(f, "|{}", constraint.version)?,
-                _ => write!(f, "|{}{}", constraint.comparator, constraint.version)?,
-            }
-        }
+        // Convert all constraints to their string representations, handling 'Any' as '*'
+        let constraint_strs: Vec<String> = self
+            .constraints
+            .iter()
+            .map(|c| {
+                if c.comparator == Comparator::Any {
+                    "*".to_string()
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect();
 
-        Ok(())
+        // Join them together with '|'
+        write!(f, "{}", constraint_strs.join("|"))
     }
 }
 
@@ -526,5 +553,32 @@ mod tests {
         assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
         assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
         assert_eq!(range.constraints()[1].version.to_string(), "3.0.0");
+    }
+
+    #[test]
+    fn test_empty_constraints_display() {
+        let range = VersVersionRange::<SemVer>::new("npm".to_string(), vec![]);
+        let display_str = range.to_string();
+        assert_eq!(display_str, "vers:npm/");
+    }
+
+    #[test]
+    fn test_empty_constraints_contains() {
+        let range = VersVersionRange::<SemVer>::new("npm".to_string(), vec![]);
+        let result = range.contains("1.0.0".parse().unwrap());
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_deserialize_empty_constraints_fails() {
+        // Construct a JSON representation of a range with empty constraints
+        let json_data = r#"{
+            "versioning_scheme": "npm",
+            "constraints": []
+        }"#;
+
+        let result: Result<VersVersionRange<SemVer>, _> = serde_json::from_str(json_data);
+        assert!(result.is_err());
     }
 }

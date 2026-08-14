@@ -308,6 +308,7 @@ dependencies = [
  "semver",
  "serde",
  "serde-wasm-bindgen",
+ "serde_json",
  "thiserror",
  "tsify",
  "wasm-bindgen",
