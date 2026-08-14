@@ -7,12 +7,12 @@ use std::cmp::Ordering;
 use std::str::FromStr;
 
 /// Scheme identifier string for Debian versions
-pub static DEB_SCHEME: &str = "deb";
+pub const DEB_SCHEME: &str = "deb";
 
 /// Macro to create InvalidVersionFormat errors for Debian versions
 macro_rules! deb_format_error {
     ($s:expr, $msg:expr) => {
-        VersError::InvalidVersionFormat(DEB_SCHEME.into(), $s.to_string(), $msg.into())
+        VersError::InvalidVersionFormat(DEB_SCHEME.to_string(), $s.to_string(), $msg.into())
     };
 }
 
