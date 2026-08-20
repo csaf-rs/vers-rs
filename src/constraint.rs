@@ -185,7 +185,10 @@ impl<V: VersionType> VersionConstraint<V> {
             (Comparator::GreaterThan, stripped)
         } else if let Some(stripped) = constraint_str.strip_prefix('<') {
             (Comparator::LessThan, stripped)
+        } else if let Some(stripped) = constraint_str.strip_prefix('=') {
+            (Comparator::Equal, stripped)
         } else {
+            // without any prefix we assume Equal
             (Comparator::Equal, constraint_str)
         };
 
