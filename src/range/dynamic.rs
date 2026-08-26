@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 /// Internal enum for the actual version range implementation
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(tag = "versioning_scheme")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 enum DynamicVersionRangeInner {
     /// SemVer-based range (for "semver" and "npm" schemes)
     #[serde(rename = "semver", alias = "npm")]
@@ -45,9 +46,12 @@ enum DynamicVersionRangeInner {
 /// ```
 #[derive(Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct DynamicVersionRange {
     inner: DynamicVersionRangeInner,
+    // Internal memoization cache, not part of the public data model: excluded from the
+    // generated TypeScript type via `serde(skip)`, which `tsify::Tsify` also honors even
+    // though `Serialize`/`Deserialize` are implemented manually below rather than derived.
+    #[cfg_attr(feature = "wasm", serde(skip))]
     cached_constraints: OnceLock<Vec<VersionConstraint<String>>>,
 }
 
@@ -521,5 +525,13 @@ mod tests {
     fn test_parse_native_roundtrip() {
         let range = DynamicVersionRange::parse_native("npm", ">=1.0.0|<2.0.0").unwrap();
         assert_eq!(range.to_string(), "vers:npm/>=1.0.0|<2.0.0");
+    }
+
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn test_cached_constraints_excluded_from_ts_decl() {
+        use tsify::Tsify;
+
+        assert!(!DynamicVersionRange::DECL.contains("cached_constraints"));
     }
 }
