@@ -34,6 +34,8 @@ jobs:
           node-version: 24
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
+      - name: Run wasm-pack tests
+        run: wasm-pack test --node
       - name: Build wasm package and npm dry-run
         run: |
           wasm-pack build --out-dir pkg --scope csaf-rs
