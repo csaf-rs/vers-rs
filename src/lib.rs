@@ -14,7 +14,7 @@ pub use range::dynamic::DynamicVersionRange;
 pub use range::vers::VersVersionRange;
 
 #[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::*;
+pub mod wasm;
 
 /// Parse a version range specifier string into a `DynamicVersionRange`.
 ///
@@ -39,7 +39,6 @@ use wasm_bindgen::prelude::*;
 /// assert_eq!(range.versioning_scheme(), "npm");
 /// assert_eq!(range.constraints().len(), 2);
 /// ```
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub fn parse(s: &str) -> Result<DynamicVersionRange, VersError> {
     s.parse()
 }
@@ -96,7 +95,6 @@ pub fn contains(range: &DynamicVersionRange, version_str: String) -> Result<bool
 /// assert_eq!(range.versioning_scheme(), "deb");
 /// assert!(range.contains("0.9".to_string()).unwrap());
 /// ```
-#[cfg_attr(feature = "wasm", wasm_bindgen)]
 pub fn parse_native(scheme: &str, raw: &str) -> Result<DynamicVersionRange, VersError> {
     DynamicVersionRange::parse_native(scheme, raw)
 }
