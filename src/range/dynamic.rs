@@ -46,6 +46,14 @@ enum DynamicVersionRangeInner {
 /// ```
 #[derive(Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+// `Serialize`/`Deserialize` are implemented manually below and delegate straight to the
+// inner `VersVersionRange<SemVer>`/`VersVersionRange<DebVersion>` value (see `dispatch_inner!`
+// in `serialize`), so the wire format is that flat union, not `{ inner: ... }` as the derive
+// would otherwise infer from this struct's fields. Override the generated TS type to match.
+#[cfg_attr(
+    feature = "wasm",
+    tsify(type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion>")
+)]
 pub struct DynamicVersionRange {
     inner: DynamicVersionRangeInner,
     // Internal memoization cache, not part of the public data model: excluded from the
@@ -533,5 +541,17 @@ mod tests {
         use tsify::Tsify;
 
         assert!(!DynamicVersionRange::DECL.contains("cached_constraints"));
+    }
+
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn test_ts_decl_matches_serialized_union_shape() {
+        use tsify::Tsify;
+
+        assert!(
+            DynamicVersionRange::DECL.contains(
+                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion>;"
+            )
+        );
     }
 }
