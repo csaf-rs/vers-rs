@@ -468,7 +468,10 @@ mod tests {
     use crate::VersError;
     use crate::VersionConstraint;
     use crate::range::VersionRange;
+    use crate::schemes::maven::MavenVersion;
     use crate::schemes::semver::SemVer;
+    use std::cmp::Ordering;
+    use std::str::FromStr;
 
     #[test]
     fn test_invalid_scheme() {
@@ -526,5 +529,111 @@ mod tests {
         assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
         assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
         assert_eq!(range.constraints()[1].version.to_string(), "3.0.0");
+    }
+
+    #[test]
+    fn test_maven_intervals() {
+        // Inclusive range [1.0, 2.0] -> >=1.0, <=2.0
+        let range1: VersVersionRange<MavenVersion> = "vers:maven/[1.0,2.0]".parse().unwrap();
+        assert_eq!(range1.constraints().len(), 2);
+        assert_eq!(
+            range1.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
+        assert_eq!(range1.constraints()[0].version.to_string(), "1.0");
+        assert_eq!(
+            range1.constraints()[1].comparator,
+            Comparator::LessThanOrEqual
+        );
+        assert_eq!(range1.constraints()[1].version.to_string(), "2.0");
+
+        // Exclusive range (1.0, 2.0) -> >1.0, <2.0
+        let range2: VersVersionRange<MavenVersion> = "vers:maven/(1.0,2.0)".parse().unwrap();
+        assert_eq!(range2.constraints().len(), 2);
+        assert_eq!(range2.constraints()[0].comparator, Comparator::GreaterThan);
+        assert_eq!(range2.constraints()[0].version.to_string(), "1.0");
+        assert_eq!(range2.constraints()[1].comparator, Comparator::LessThan);
+        assert_eq!(range2.constraints()[1].version.to_string(), "2.0");
+
+        // Half-open range [1.0, 2.0) -> >=1.0, <2.0
+        let range3: VersVersionRange<MavenVersion> = "vers:maven/[1.0,2.0)".parse().unwrap();
+        assert_eq!(range3.constraints().len(), 2);
+        assert_eq!(
+            range3.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
+        assert_eq!(range3.constraints()[1].comparator, Comparator::LessThan);
+
+        // Half-open range (1.0, 2.0] -> >1.0, <=2.0
+        let range4: VersVersionRange<MavenVersion> = "vers:maven/(1.0,2.0]".parse().unwrap();
+        assert_eq!(range4.constraints().len(), 2);
+        assert_eq!(range4.constraints()[0].comparator, Comparator::GreaterThan);
+        assert_eq!(
+            range4.constraints()[1].comparator,
+            Comparator::LessThanOrEqual
+        );
+
+        // Open-ended lower bound [,2.0] -> <=2.0
+        let range5: VersVersionRange<MavenVersion> = "vers:maven/[,2.0]".parse().unwrap();
+        assert_eq!(range5.constraints().len(), 1);
+        assert_eq!(
+            range5.constraints()[0].comparator,
+            Comparator::LessThanOrEqual
+        );
+        assert_eq!(range5.constraints()[0].version.to_string(), "2.0");
+
+        // Open-ended upper bound [1.0,] -> >=1.0
+        let range6: VersVersionRange<MavenVersion> = "vers:maven/[1.0,]".parse().unwrap();
+        assert_eq!(range6.constraints().len(), 1);
+        assert_eq!(
+            range6.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
+        assert_eq!(range6.constraints()[0].version.to_string(), "1.0");
+
+        // Single explicit version [1.0] -> Equal
+        let range7: VersVersionRange<MavenVersion> = "vers:maven/[1.0]".parse().unwrap();
+        assert_eq!(range7.constraints().len(), 1);
+        assert_eq!(range7.constraints()[0].comparator, Comparator::Equal);
+        assert_eq!(range7.constraints()[0].version.to_string(), "1.0");
+
+        // Wildcard *
+        let range8: VersVersionRange<MavenVersion> = "vers:maven/*".parse().unwrap();
+        assert_eq!(range8.constraints().len(), 1);
+        assert_eq!(range8.constraints()[0].comparator, Comparator::Any);
+
+        // Explicit comparator prefix
+        let range9: VersVersionRange<MavenVersion> = "vers:maven/>=1.5.0".parse().unwrap();
+        assert_eq!(range9.constraints().len(), 1);
+        assert_eq!(
+            range9.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
+        assert_eq!(range9.constraints()[0].version.to_string(), "1.5.0");
+    }
+
+    #[test]
+    fn test_maven_version_ordering() {
+        // Test numeric comparison vs lexicographic (e.g., 1.2 vs 1.10)
+        let v1 = MavenVersion::from_str("1.2").unwrap();
+        let v2 = MavenVersion::from_str("1.10").unwrap();
+        assert_eq!(v1.cmp(&v2), Ordering::Less);
+
+        // Test qualifier precedence (alpha < beta < rc < snapshot < ga/final)
+        let alpha = MavenVersion::from_str("1.0-alpha").unwrap();
+        let beta = MavenVersion::from_str("1.0-beta").unwrap();
+        let rc = MavenVersion::from_str("1.0-rc1").unwrap();
+        let snapshot = MavenVersion::from_str("1.0-SNAPSHOT").unwrap();
+        let final_ver = MavenVersion::from_str("1.0").unwrap();
+
+        assert!(alpha < beta);
+        assert!(beta < rc);
+        assert!(rc < snapshot);
+        assert!(snapshot < final_ver);
+
+        // Test numeric components against strings/qualifiers (number > string)
+        let v_num = MavenVersion::from_str("1.0-1").unwrap();
+        let v_str = MavenVersion::from_str("1.0-alpha").unwrap();
+        assert!(v_str < v_num);
     }
 }
