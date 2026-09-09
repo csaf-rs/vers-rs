@@ -467,8 +467,11 @@ mod tests {
     use crate::Comparator;
     use crate::VersError;
     use crate::VersionConstraint;
+    use crate::constraint::NativeVersionConverter;
     use crate::range::VersionRange;
+    use crate::schemes::rpm::RpmVersion;
     use crate::schemes::semver::SemVer;
+    use std::str::FromStr;
 
     #[test]
     fn test_invalid_scheme() {
@@ -526,5 +529,57 @@ mod tests {
         assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
         assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
         assert_eq!(range.constraints()[1].version.to_string(), "3.0.0");
+    }
+
+    #[test]
+    fn test_rpm_comprehensive_ordering() {
+        // 1. Tilde pre-release sorting (~ sorts before anything, including nothing)
+        let tilde_ver = RpmVersion::from_str("1.0~rc1").unwrap();
+        let base_ver = RpmVersion::from_str("1.0").unwrap();
+        assert!(tilde_ver < base_ver);
+
+        // Tilde compared to text remainder: 1.0~ab vs 1.0 -> 1.0~ab is older because of tilde
+        let tilde_alpha = RpmVersion::from_str("1.0~ab").unwrap();
+        assert!(tilde_alpha < base_ver);
+
+        // 2. Numeric vs Alphabetic segment priority (numeric always wins)
+        let alpha_seg = RpmVersion::from_str("1.a").unwrap();
+        let num_seg = RpmVersion::from_str("1.1").unwrap();
+        assert!(alpha_seg < num_seg); // 'a' segment loses to numeric '1'
+
+        // 3. Numeric value & leading zeros magnitude behavior
+        let v_9 = RpmVersion::from_str("1.9").unwrap();
+        let v_10 = RpmVersion::from_str("1.10").unwrap();
+        assert!(v_9 < v_10); // 10 > 9 numerically
+
+        let v_05 = RpmVersion::from_str("1.05").unwrap();
+        let v_5 = RpmVersion::from_str("1.5").unwrap();
+        assert!(v_5 < v_05); // "1.05" is newer than "1.5" due to segment length tie-breaking in rpmvercmp
+
+        // 4. Trailing segment length rule
+        let short_v = RpmVersion::from_str("1.2").unwrap();
+        let long_v = RpmVersion::from_str("1.2.3").unwrap();
+        assert!(short_v < long_v); // Longer string wins when matching up to the end
+
+        // 5. Epoch precedence
+        let low_epoch = RpmVersion::from_str("2:1.0-1").unwrap();
+        let high_epoch = RpmVersion::from_str("10:1.0-1").unwrap();
+        assert!(low_epoch < high_epoch);
+
+        // 6. Release suffix matching
+        let rel_low = RpmVersion::from_str("1.2.3-1.el8").unwrap();
+        let rel_high = RpmVersion::from_str("1.2.3-2.el8").unwrap();
+        assert!(rel_low < rel_high);
+    }
+
+    #[test]
+    fn test_rpm_intervals() {
+        let range: Vec<VersionConstraint<RpmVersion>> =
+            RpmVersion::from_native(">=1.0-1,<2.0-1").unwrap();
+        assert_eq!(range.len(), 2);
+        assert_eq!(range[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(range[0].version.to_string(), "1.0-1");
+        assert_eq!(range[1].comparator, Comparator::LessThan);
+        assert_eq!(range[1].version.to_string(), "2.0-1");
     }
 }
