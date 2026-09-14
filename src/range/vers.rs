@@ -411,19 +411,14 @@ impl<V: NativeVersionConverter> FromStr for VersVersionRange<V> {
         // Remove all spaces and tabs
         let s = s.replace(|c: char| c.is_whitespace(), "");
 
-        // Split on colon
+        // Split on the first unencoded colon
+        // additional validate URI scheme
         let parts: Vec<&str> = s.splitn(2, ':').collect();
-        if parts.len() != 2 {
+        if parts.len() != 2 || parts[0] != "vers" {
             return Err(VersError::InvalidScheme);
         }
 
-        // Validate URI scheme
-        let scheme = parts[0];
-        if scheme != "vers" {
-            return Err(VersError::InvalidScheme);
-        }
-
-        // Split on slash
+        // Split on the first unencoded slash separating scheme and constraints
         let specifier_parts: Vec<&str> = parts[1].splitn(2, '/').collect();
         if specifier_parts.len() != 2 {
             return Err(VersError::MissingVersioningScheme);
