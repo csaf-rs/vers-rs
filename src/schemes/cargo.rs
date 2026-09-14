@@ -1,8 +1,8 @@
 //! Version constraint type for the Cargo versioning scheme.
 //!
 //! This module contains the `CargoVersion` struct and its implementation of the
-//! `NativeVersionConverter` trait, supporting Cargo dependency specification rules
-//! (caret, tilde, wildcards, exact, and comparative ranges).
+//! `NativeVersionConverter` trait, providing Cargo version ordering semantics
+//! conforming strictly to standard VERS syntax rules.
 
 use crate::VersError;
 use crate::VersionConstraint;
@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::str::FromStr;
 
-pub static CARGO_SCHEME: &str = "cargo";
+pub const CARGO_SCHEME: &str = "cargo";
 
 #[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -27,123 +27,49 @@ impl Default for CargoVersion {
 }
 
 impl NativeVersionConverter for CargoVersion {
-    const SCHEME_NAME: &'static str = "cargo";
+    const SCHEME_NAME: &'static str = CARGO_SCHEME;
 
-    /// Parse a full native range string into one or more standard `VersionConstraint`s.
-    ///
-    /// Cargo native constraints can use commas (`,`) for conjunction within a segment
-    /// and pipes (`|`) for disjunction between segments. Because a single Cargo spec
-    /// like `^1.2.3` or `1.2.*` or `~1.2` can expand into multiple constraints (e.g. `>=1.2.3, <2.0.0`),
-    /// we override `from_native` to correctly flatten all segments and comma-separated clauses.
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         let raw = raw.trim();
         if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        let segments: Vec<&str> = raw
-            .trim_matches('|')
-            .split('|')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
+        let clauses: Vec<&str> = raw.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let mut constraints = Vec::new();
 
-        if segments.is_empty() {
-            return Err(VersError::EmptyConstraints);
+        for clause in clauses {
+            constraints.push(Self::from_native_constraint(clause)?);
         }
 
-        let mut all_constraints = Vec::new();
-        for segment in segments {
-            if segment.contains(',') {
-                for part in segment.split(',') {
-                    let part = part.trim();
-                    if !part.is_empty() {
-                        all_constraints.extend(Self::parse_single_cargo_spec(part)?);
-                    }
-                }
-            } else {
-                all_constraints.extend(Self::parse_single_cargo_spec(segment)?);
-            }
-        }
-
-        if all_constraints.is_empty() {
-            return Err(VersError::EmptyConstraints);
-        }
-
-        Ok(all_constraints)
+        Ok(constraints)
     }
 
-    /// Parse a single native constraint string into a single `VersionConstraint`.
-    /// If the single constraint expands into multiple bounds (like a caret or tilde range),
-    /// we return an error or handle it appropriately for single-constraint contexts.
     fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
-        let constraints = Self::parse_single_cargo_spec(raw)?;
-        if constraints.len() == 1 {
-            Ok(constraints.into_iter().next().unwrap())
-        } else {
-            Err(VersError::InvalidConstraint(format!(
-                "Constraint '{}' expands to multiple bounds; please use from_native instead",
-                raw
-            )))
-        }
-    }
-}
-
-impl CargoVersion {
-    fn parse_single_cargo_spec(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         let raw = raw.trim();
 
-        if raw.ends_with(".*") || raw == "*" {
-            return expand_wildcard(raw);
+        if raw == "*" || raw == "==*" {
+            return Ok(VersionConstraint::new(Comparator::Any, CargoVersion::default()));
         }
 
-        if let Some(stripped) = raw.strip_prefix('~') {
-            return expand_tilde(stripped.trim());
-        }
-
-        let (is_explicit_caret, version_part) = if let Some(stripped) = raw.strip_prefix('^') {
-            (true, stripped.trim())
+        let (comp, ver_str) = if let Some(s) = raw.strip_prefix(">=") {
+            (Comparator::GreaterThanOrEqual, s)
+        } else if let Some(s) = raw.strip_prefix("<=") {
+            (Comparator::LessThanOrEqual, s)
+        } else if let Some(s) = raw.strip_prefix("!=") {
+            (Comparator::NotEqual, s)
+        } else if let Some(s) = raw.strip_prefix('>') {
+            (Comparator::GreaterThan, s)
+        } else if let Some(s) = raw.strip_prefix('<') {
+            (Comparator::LessThan, s)
+        } else if let Some(s) = raw.strip_prefix('=') {
+            (Comparator::Equal, s)
         } else {
-            (false, raw)
+            (Comparator::Equal, raw)
         };
 
-        if let Some(stripped) = version_part.strip_prefix(">=") {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::GreaterThanOrEqual,
-                CargoVersion(v),
-            )]);
-        }
-        if let Some(stripped) = version_part.strip_prefix("<=") {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::LessThanOrEqual,
-                CargoVersion(v),
-            )]);
-        }
-        if let Some(stripped) = version_part.strip_prefix('>') {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::GreaterThan,
-                CargoVersion(v),
-            )]);
-        }
-        if let Some(stripped) = version_part.strip_prefix('<') {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::LessThan,
-                CargoVersion(v),
-            )]);
-        }
-        if let Some(stripped) = version_part.strip_prefix('=') {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::Equal,
-                CargoVersion(v),
-            )]);
-        }
-
-        expand_caret_or_default(version_part, is_explicit_caret)
+        let v = parse_version_loose(ver_str.trim(), raw)?;
+        Ok(VersionConstraint::new(comp, CargoVersion(v)))
     }
 }
 
@@ -160,120 +86,8 @@ fn parse_version_loose(s: &str, original: &str) -> Result<Version, VersError> {
         s.to_string()
     };
     Version::parse(&normalized).map_err(|e| {
-        VersError::InvalidVersionFormat(CARGO_SCHEME, original.to_string(), e.to_string())
+        VersError::InvalidVersionFormat(CARGO_SCHEME.to_string(), original.to_string(), e.to_string())
     })
-}
-
-fn expand_wildcard(raw: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
-    if raw == "*" {
-        return Ok(vec![VersionConstraint::new(
-            Comparator::Any,
-            CargoVersion::default(),
-        )]);
-    }
-    let base = &raw[..raw.len() - 2];
-    let parts: Vec<&str> = base.split('.').collect();
-    match parts.len() {
-        1 => {
-            let major = parts[0]
-                .parse::<u64>()
-                .map_err(|_| VersError::InvalidConstraint(raw.to_string()))?;
-            Ok(vec![
-                VersionConstraint::new(
-                    Comparator::GreaterThanOrEqual,
-                    CargoVersion(Version::new(major, 0, 0)),
-                ),
-                VersionConstraint::new(
-                    Comparator::LessThan,
-                    CargoVersion(Version::new(major + 1, 0, 0)),
-                ),
-            ])
-        }
-        2 => {
-            let major = parts[0]
-                .parse::<u64>()
-                .map_err(|_| VersError::InvalidConstraint(raw.to_string()))?;
-            let minor = parts[1]
-                .parse::<u64>()
-                .map_err(|_| VersError::InvalidConstraint(raw.to_string()))?;
-            Ok(vec![
-                VersionConstraint::new(
-                    Comparator::GreaterThanOrEqual,
-                    CargoVersion(Version::new(major, minor, 0)),
-                ),
-                VersionConstraint::new(
-                    Comparator::LessThan,
-                    CargoVersion(Version::new(major, minor + 1, 0)),
-                ),
-            ])
-        }
-        _ => Err(VersError::InvalidConstraint(raw.to_string())),
-    }
-}
-
-fn expand_tilde(s: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
-    let core_part = s.split(['-', '+']).next().unwrap_or(s);
-    let dots = core_part.matches('.').count();
-    let v = parse_version_loose(s, s)?;
-    if dots == 2 || dots == 1 {
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v.clone())),
-            VersionConstraint::new(
-                Comparator::LessThan,
-                CargoVersion(Version::new(v.major, v.minor + 1, 0)),
-            ),
-        ])
-    } else {
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v.clone())),
-            VersionConstraint::new(
-                Comparator::LessThan,
-                CargoVersion(Version::new(v.major + 1, 0, 0)),
-            ),
-        ])
-    }
-}
-
-fn expand_caret_or_default(
-    s: &str,
-    _explicit: bool,
-) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
-    let core_part = s.split(['-', '+']).next().unwrap_or(s);
-    let dots = core_part.matches('.').count();
-    let v = parse_version_loose(s, s)?;
-
-    if dots == 2 {
-        let upper = if v.major > 0 {
-            Version::new(v.major + 1, 0, 0)
-        } else if v.minor > 0 {
-            Version::new(0, v.minor + 1, 0)
-        } else {
-            Version::new(0, 0, v.patch + 1)
-        };
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v)),
-            VersionConstraint::new(Comparator::LessThan, CargoVersion(upper)),
-        ])
-    } else if dots == 1 {
-        let upper = if v.major > 0 {
-            Version::new(v.major + 1, 0, 0)
-        } else {
-            Version::new(0, v.minor + 1, 0)
-        };
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v)),
-            VersionConstraint::new(Comparator::LessThan, CargoVersion(upper)),
-        ])
-    } else {
-        let upper = v.major + 1;
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v)),
-            VersionConstraint::new(
-                Comparator::LessThan,
-                CargoVersion(Version::new(upper, 0, 0)),
-            ),
-        ])
-    }
 }
 
 impl PartialOrd for CargoVersion {
