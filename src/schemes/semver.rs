@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::str::FromStr;
 
-pub static SEMVER_SCHEME: &str = "semver/npm";
+pub const SEMVER_SCHEME: &str = "semver/npm";
 
 #[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -66,7 +66,7 @@ impl FromStr for SemVer {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(SemVer(Version::parse(s).map_err(|e| {
-            VersError::InvalidVersionFormat(SEMVER_SCHEME, s.to_string(), e.to_string())
+            VersError::InvalidVersionFormat(SEMVER_SCHEME.to_string(), s.to_string(), e.to_string())
         })?))
     }
 }

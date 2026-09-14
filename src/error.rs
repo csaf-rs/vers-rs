@@ -42,7 +42,7 @@ pub enum VersError {
     UnsupportedVersioningScheme(String),
 
     #[error("Invalid version format for scheme {0}: {1}, error was: {2}")]
-    InvalidVersionFormat(&'static str, String, String),
+    InvalidVersionFormat(String, String, String),
 }
 
 /// Convert VersError into a JS exception value when targeting wasm.
@@ -50,5 +50,30 @@ pub enum VersError {
 impl From<VersError> for JsValue {
     fn from(e: VersError) -> JsValue {
         JsValue::from(JsError::new(&e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn vers_error_round_trips_through_json() {
+        let original = VersError::InvalidVersionFormat(
+            "deb".to_string(),
+            "<<1.0.0!".to_string(),
+            "unexpected character '!'".to_string(),
+        );
+
+        // Serialisation works fine, as Serialize has no lifetime constraints
+        let json: String = serde_json::to_string(&original).unwrap();
+        assert_eq!(
+            json,
+            r#"{"InvalidVersionFormat":["deb","<<1.0.0!","unexpected character '!'"]}"#
+        );
+
+        // Deserialisation from a runtime String successfully compiles and roundtrips
+        let roundtripped: VersError = serde_json::from_str(&json).unwrap();
+        assert_eq!(roundtripped, original);
     }
 }
