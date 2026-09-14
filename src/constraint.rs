@@ -62,20 +62,22 @@ pub trait NativeVersionConverter: VersionType {
     /// each segment. Schemes whose native syntax doesn't use `|` as a delimiter
     /// should override this method.
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
-        let segments: Vec<&str> = raw
-            .trim_matches('|')
-            .split('|')
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if segments.is_empty() {
+        let raw = raw.trim();
+        if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        segments
-            .iter()
-            .map(|s| Self::from_native_constraint(s))
-            .collect()
+        let segments: Vec<&str> = raw.split('|').map(|s| s.trim()).collect();
+
+        let mut constraints = Vec::new();
+        for segment in segments {
+            if segment.is_empty() {
+                return Err(VersError::EmptyConstraints);
+            }
+            constraints.push(Self::from_native_constraint(segment)?);
+        }
+
+        Ok(constraints)
     }
 
     /// Parse a single native constraint string into one or more `VersionConstraint`s.
