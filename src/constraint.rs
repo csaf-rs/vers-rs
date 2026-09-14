@@ -175,6 +175,7 @@ impl<V: VersionType> VersionConstraint<V> {
             });
         }
 
+        // Explicit '=' prefix is forbidden per spec update #95;
         let (comparator, version) = if let Some(stripped) = constraint_str.strip_prefix(">=") {
             (Comparator::GreaterThanOrEqual, stripped)
         } else if let Some(stripped) = constraint_str.strip_prefix("<=") {
@@ -185,10 +186,9 @@ impl<V: VersionType> VersionConstraint<V> {
             (Comparator::GreaterThan, stripped)
         } else if let Some(stripped) = constraint_str.strip_prefix('<') {
             (Comparator::LessThan, stripped)
-        } else if let Some(stripped) = constraint_str.strip_prefix('=') {
-            (Comparator::Equal, stripped)
         } else {
             // without any prefix we assume Equal
+            // Equal comparator is strictly implicit (e.g., "1.2.3", not "=1.2.3")
             (Comparator::Equal, constraint_str)
         };
 
