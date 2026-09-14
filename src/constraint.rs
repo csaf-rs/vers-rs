@@ -192,6 +192,13 @@ impl<V: VersionType> VersionConstraint<V> {
             (Comparator::Equal, constraint_str)
         };
 
+        if constraint_str.starts_with('=') {
+            return Err(VersError::InvalidConstraint(format!(
+                "Explicit equality operator is not allowed; use a bare version without a leading '=': {}",
+                constraint_str
+            )));
+        }
+
         let version = version.trim();
         if version.is_empty() && comparator != Comparator::Any {
             return Err(VersError::InvalidConstraint("Missing version".to_string()));
