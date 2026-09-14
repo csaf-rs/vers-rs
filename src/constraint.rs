@@ -223,7 +223,7 @@ impl<V: VersionType> VersionConstraint<V> {
 impl<V: VersionType> Display for VersionConstraint<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self.comparator {
-            Comparator::Equal => write!(f, "{}", self.version), // Implicit equal prints no operator, currently still a matter of debate
+            Comparator::Equal => write!(f, "{}", self.version), // Implicit equal prints no operator
             _ => write!(f, "{}{}", self.comparator, self.version), // Others print operator + version
         }
     }
