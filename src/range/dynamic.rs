@@ -1,7 +1,6 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
-use crate::schemes::deb::DebVersion;
-use crate::schemes::semver::SemVer;
+use crate::schemes::{cargo::CargoVersion, deb::DebVersion, semver::SemVer};
 use crate::{VersError, VersVersionRange, VersionConstraint};
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -18,6 +17,9 @@ enum DynamicVersionRangeInner {
     /// Debian dpkg-style versioning ("deb" scheme)
     #[serde(rename = "deb")]
     Deb(VersVersionRange<DebVersion>),
+    /// Cargo-based range ("cargo" scheme)
+    #[serde(rename = "cargo")]
+    Cargo(VersVersionRange<CargoVersion>),
 }
 
 /// A dynamic version range that automatically detects the versioning scheme.
@@ -74,6 +76,7 @@ macro_rules! dispatch_inner {
         match $inner {
             DynamicVersionRangeInner::SemVer($range) => $expr,
             DynamicVersionRangeInner::Deb($range) => $expr,
+            DynamicVersionRangeInner::Cargo($range) => $expr,
         }
     };
 }
@@ -110,6 +113,9 @@ impl DynamicVersionRange {
                 DynamicVersionRangeInner::SemVer(SemVer::from_native_string(scheme, raw)?)
             }
             "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(scheme, raw)?),
+            "cargo" => {
+                DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
+            }
             _ => return Err(VersError::UnsupportedVersioningScheme(scheme.to_string())),
         };
 
@@ -206,6 +212,9 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::Deb(range) => {
                 range.contains(version_str.parse::<DebVersion>()?)
             }
+            DynamicVersionRangeInner::Cargo(range) => {
+                range.contains(version_str.parse::<CargoVersion>()?)
+            }
         }
     }
 
@@ -269,6 +278,7 @@ impl FromStr for DynamicVersionRange {
         let inner = match versioning_scheme.as_str() {
             "semver" | "npm" => DynamicVersionRangeInner::SemVer(s.parse()?),
             "deb" => DynamicVersionRangeInner::Deb(s.parse()?),
+            "cargo" => DynamicVersionRangeInner::Cargo(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
         };
 
@@ -521,5 +531,99 @@ mod tests {
     fn test_parse_native_roundtrip() {
         let range = DynamicVersionRange::parse_native("npm", ">=1.0.0|<2.0.0").unwrap();
         assert_eq!(range.to_string(), "vers:npm/>=1.0.0|<2.0.0");
+    }
+
+    #[test]
+    fn test_dynamic_parse_cargo() {
+        let range: DynamicVersionRange = "vers:cargo/^1.2.3".parse().unwrap();
+        assert_eq!(range.versioning_scheme(), "cargo");
+        assert_eq!(range.constraints().len(), 2);
+    }
+
+    #[test]
+    fn test_parse_native_cargo() {
+        let range = DynamicVersionRange::parse_native("cargo", "~1.2.3").unwrap();
+        assert_eq!(range.versioning_scheme(), "cargo");
+        assert_eq!(range.constraints().len(), 2);
+    }
+
+    #[test]
+    fn test_cargo_dynamic_contains() {
+        let range: DynamicVersionRange = "vers:cargo/^1.2.3".parse().unwrap();
+        assert!(range.contains("1.2.3".to_string()).unwrap());
+        assert!(range.contains("1.5.0".to_string()).unwrap());
+        assert!(!range.contains("2.0.0".to_string()).unwrap());
+    }
+
+    #[test]
+    fn test_cargo_dynamic_wildcard() {
+        let range: DynamicVersionRange = "vers:cargo/1.*".parse().unwrap();
+        assert!(range.contains("1.2.3".to_string()).unwrap());
+        assert!(!range.contains("2.0.0".to_string()).unwrap());
+    }
+
+    #[test]
+    fn test_cargo_explicit_operators_with_partial_versions() {
+        let range: DynamicVersionRange = "vers:cargo/>=1.2,<1.5".parse().unwrap();
+        assert_eq!(range.versioning_scheme(), "cargo");
+        assert_eq!(range.constraints().len(), 2);
+        assert_eq!(
+            range.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
+        assert_eq!(range.constraints()[0].version.to_string(), "1.2.0");
+        assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
+        assert_eq!(range.constraints()[1].version.to_string(), "1.5.0");
+
+        let single_bound: DynamicVersionRange = "vers:cargo/<=2".parse().unwrap();
+        assert_eq!(single_bound.constraints().len(), 1);
+        assert_eq!(
+            single_bound.constraints()[0].comparator,
+            Comparator::LessThanOrEqual
+        );
+        assert_eq!(single_bound.constraints()[0].version.to_string(), "2.0.0");
+    }
+
+    #[test]
+    fn test_cargo_zero_major_caret_expansions() {
+        // ^0.2.3 expands to >=0.2.3, <0.3.0
+        let range: DynamicVersionRange = "vers:cargo/^0.2.3".parse().unwrap();
+        assert_eq!(range.constraints().len(), 2);
+        assert_eq!(range.constraints()[1].version.to_string(), "0.3.0");
+
+        // ^0.0.3 expands to >=0.0.3, <0.0.4
+        let range_zero: DynamicVersionRange = "vers:cargo/^0.0.3".parse().unwrap();
+        assert_eq!(range_zero.constraints().len(), 2);
+        assert_eq!(range_zero.constraints()[1].version.to_string(), "0.0.4");
+    }
+
+    #[test]
+    fn test_cargo_partial_wildcards() {
+        let range: DynamicVersionRange = "vers:cargo/1.2.*".parse().unwrap();
+        assert_eq!(range.constraints().len(), 2);
+        assert_eq!(
+            range.constraints()[0].comparator,
+            Comparator::GreaterThanOrEqual
+        );
+        assert_eq!(range.constraints()[0].version.to_string(), "1.2.0");
+        assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
+        assert_eq!(range.constraints()[1].version.to_string(), "1.3.0");
+    }
+
+    #[test]
+    fn test_cargo_pipe_disjunctions() {
+        let range: DynamicVersionRange = "vers:cargo/^1.0.0 | ~2.1.0".parse().unwrap();
+        assert_eq!(range.constraints().len(), 4);
+        assert!(range.contains("1.5.0".to_string()).unwrap());
+        assert!(range.contains("2.1.4".to_string()).unwrap());
+        assert!(!range.contains("2.2.0".to_string()).unwrap());
+    }
+
+    #[test]
+    fn test_cargo_prerelease_versions() {
+        let range: DynamicVersionRange = "vers:cargo/^1.2.3-alpha.1".parse().unwrap();
+        assert!(range.contains("1.2.3-alpha.2".to_string()).unwrap());
+        assert!(range.contains("1.2.3".to_string()).unwrap());
+        assert!(!range.contains("2.0.0".to_string()).unwrap());
     }
 }
