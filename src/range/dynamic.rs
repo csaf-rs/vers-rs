@@ -311,7 +311,38 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
     where
         D: serde::de::Deserializer<'de>,
     {
-        let inner = DynamicVersionRangeInner::deserialize(deserializer)?;
+        // `DynamicVersionRangeInner`'s derived `Deserialize` uses `#[serde(tag =
+        // "versioning_scheme")]` (internal tagging), which requires serde to consume the
+        // `versioning_scheme` field to pick the variant before deserializing the rest.
+        // Since `VersVersionRange<V>` (the variants' payload) *also* has its own
+        // `versioning_scheme` field, that field is no longer available once the tag has
+        // been consumed, and deserialization fails with "missing field
+        // `versioning_scheme`". This mirrors a known serde limitation (see
+        // serde-rs/serde#1560).
+        //
+        // Work around it by buffering the input into a `serde_json::Value` (which can be
+        // built from any `Deserializer`, not just JSON input), reading the
+        // `versioning_scheme` field ourselves to pick the variant, and then deserializing
+        // the *whole* buffered value (tag field included) into that variant's concrete
+        // type directly.
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let scheme = value
+            .get("versioning_scheme")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("versioning_scheme"))?;
+        let inner = match scheme {
+            "semver" | "npm" => DynamicVersionRangeInner::SemVer(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            "deb" => DynamicVersionRangeInner::Deb(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            other => {
+                return Err(serde::de::Error::custom(format!(
+                    "unsupported versioning scheme: {other}"
+                )));
+            }
+        };
         Ok(DynamicVersionRange {
             inner,
             cached_constraints: OnceLock::new(),
