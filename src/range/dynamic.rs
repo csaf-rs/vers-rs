@@ -11,6 +11,7 @@ use std::sync::OnceLock;
 /// Internal enum for the actual version range implementation
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 #[serde(tag = "versioning_scheme")]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 enum DynamicVersionRangeInner {
     /// SemVer-based range (for "semver" and "npm" schemes)
     #[serde(rename = "semver", alias = "npm")]
@@ -45,9 +46,20 @@ enum DynamicVersionRangeInner {
 /// ```
 #[derive(Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
+// `Serialize`/`Deserialize` are implemented manually below and delegate straight to the
+// inner `VersVersionRange<SemVer>`/`VersVersionRange<DebVersion>` value (see `dispatch_inner!`
+// in `serialize`), so the wire format is that flat union, not `{ inner: ... }` as the derive
+// would otherwise infer from this struct's fields. Override the generated TS type to match.
+#[cfg_attr(
+    feature = "wasm",
+    tsify(type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion>")
+)]
 pub struct DynamicVersionRange {
     inner: DynamicVersionRangeInner,
+    // Internal memoization cache, not part of the public data model: excluded from the
+    // generated TypeScript type via `serde(skip)`, which `tsify::Tsify` also honors even
+    // though `Serialize`/`Deserialize` are implemented manually below rather than derived.
+    #[cfg_attr(feature = "wasm", serde(skip))]
     cached_constraints: OnceLock<Vec<VersionConstraint<String>>>,
 }
 
@@ -299,7 +311,38 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
     where
         D: serde::de::Deserializer<'de>,
     {
-        let inner = DynamicVersionRangeInner::deserialize(deserializer)?;
+        // `DynamicVersionRangeInner`'s derived `Deserialize` uses `#[serde(tag =
+        // "versioning_scheme")]` (internal tagging), which requires serde to consume the
+        // `versioning_scheme` field to pick the variant before deserializing the rest.
+        // Since `VersVersionRange<V>` (the variants' payload) *also* has its own
+        // `versioning_scheme` field, that field is no longer available once the tag has
+        // been consumed, and deserialization fails with "missing field
+        // `versioning_scheme`". This mirrors a known serde limitation (see
+        // serde-rs/serde#1560).
+        //
+        // Work around it by buffering the input into a `serde_json::Value` (which can be
+        // built from any `Deserializer`, not just JSON input), reading the
+        // `versioning_scheme` field ourselves to pick the variant, and then deserializing
+        // the *whole* buffered value (tag field included) into that variant's concrete
+        // type directly.
+        let value = serde_json::Value::deserialize(deserializer)?;
+        let scheme = value
+            .get("versioning_scheme")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| serde::de::Error::missing_field("versioning_scheme"))?;
+        let inner = match scheme {
+            "semver" | "npm" => DynamicVersionRangeInner::SemVer(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            "deb" => DynamicVersionRangeInner::Deb(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            other => {
+                return Err(serde::de::Error::custom(format!(
+                    "unsupported versioning scheme: {other}"
+                )));
+            }
+        };
         Ok(DynamicVersionRange {
             inner,
             cached_constraints: OnceLock::new(),
@@ -521,5 +564,25 @@ mod tests {
     fn test_parse_native_roundtrip() {
         let range = DynamicVersionRange::parse_native("npm", ">=1.0.0|<2.0.0").unwrap();
         assert_eq!(range.to_string(), "vers:npm/>=1.0.0|<2.0.0");
+    }
+
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn test_cached_constraints_excluded_from_ts_decl() {
+        use tsify::Tsify;
+
+        assert!(!DynamicVersionRange::DECL.contains("cached_constraints"));
+    }
+
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn test_ts_decl_matches_serialized_union_shape() {
+        use tsify::Tsify;
+
+        assert!(
+            DynamicVersionRange::DECL.contains(
+                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion>;"
+            )
+        );
     }
 }

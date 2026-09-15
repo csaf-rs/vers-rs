@@ -24,6 +24,7 @@ macro_rules! deb_format_error {
 /// - Tilde '~' sorts before the end and before any other character
 /// - Sequences of digits are compared numerically; non-digits lexicographically
 #[derive(Clone, Debug, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DebVersion {
     epoch: u64,
     upstream: String,
