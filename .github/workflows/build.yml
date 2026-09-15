@@ -7,11 +7,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Update rustup
         run: rustup update stable --no-self-update
       - name: Run shared format, clippy and doc checks
-        uses: csaf-rs/shared-workflows/.github/actions/rust-checks@8d7fd6241752c334d1c60e80a355722f44d9b99e # v1.2.0
+        uses: csaf-rs/shared-workflows/.github/actions/rust-checks@4828cd545465d4faade7eb410621ad7d8954f0dc # v1.9.0
         with:
           doc-extra-args: "--all-features"
       - name: Prepare targets
@@ -27,9 +27,9 @@ jobs:
       - name: Build wasm target
         run: cargo build --locked --workspace --target wasm32-unknown-unknown --verbose
       - name: Publish dry-run
-        uses: csaf-rs/shared-workflows/.github/actions/cargo-publish-dry-run@56bcf77399696052c9eb925a6059c77c1eaab1bc # v1.6.0
+        uses: csaf-rs/shared-workflows/.github/actions/cargo-publish-dry-run@4828cd545465d4faade7eb410621ad7d8954f0dc # v1.9.0
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
       - name: Install wasm-pack
@@ -43,4 +43,4 @@ jobs:
           npm pack --dry-run
 
   coverage:
-    uses: csaf-rs/shared-workflows/.github/workflows/rust-coverage.yml@400ee021e6bdeb7e2808264749e2fe20b25401e8 # v1.3.0
+    uses: csaf-rs/shared-workflows/.github/workflows/rust-coverage.yml@4828cd545465d4faade7eb410621ad7d8954f0dc # v1.9.0
