@@ -123,4 +123,13 @@ mod tests {
         let result = contains(range, version_str.to_string());
         assert!(result.expect("Failed to check if version is in range"));
     }
+
+    #[wasm_bindgen_test]
+    fn contains_with_malformed_input_returns_serialization_error() {
+        let invalid_ts = Ts::<DynamicVersionRange>::new_unchecked(JsValue::from_str("invalid"));
+        let version_str = "1.2.3";
+        let result = contains(invalid_ts, version_str.to_string());
+        assert!(result.is_err());
+        assert_matches!(result, Err(VersError::Serialization(_)))
+    }
 }
