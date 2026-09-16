@@ -45,7 +45,7 @@ installing a matching `wasm-bindgen` CLI version automatically:
 ```sh
 rustup target add wasm32-unknown-unknown
 cargo install wasm-pack
-wasm-pack test --node
+wasm-pack test --node --features wasm
 ```
 
 Node.js must be available on `PATH` for the `--node` runner. Use

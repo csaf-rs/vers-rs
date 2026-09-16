@@ -9,15 +9,18 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 
 /// Internal enum for the actual version range implementation
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
-#[serde(tag = "versioning_scheme")]
+///
+/// `Deserialize` for this enum is implemented manually below (see the `Deserialize` impl for
+/// `DynamicVersionRange`) rather than derived: a derived `#[serde(tag = "versioning_scheme")]`
+/// (internal tagging) would require serde to buffer the input via `deserialize_any`. That's
+/// fine here since `DynamicVersionRange`'s `Deserialize` impl is explicitly JSON-only (see
+/// its doc comment below), but it's why this can't be a plain derive.
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 enum DynamicVersionRangeInner {
     /// SemVer-based range (for "semver" and "npm" schemes)
-    #[serde(rename = "semver", alias = "npm")]
     SemVer(VersVersionRange<SemVer>),
     /// Debian dpkg-style versioning ("deb" scheme)
-    #[serde(rename = "deb")]
     Deb(VersVersionRange<DebVersion>),
 }
 
@@ -306,25 +309,25 @@ impl serde::ser::Serialize for DynamicVersionRange {
     }
 }
 
+/// Manual `Deserialize` impl, **JSON-only**.
+///
+/// `DynamicVersionRangeInner`'s natural representation would be an internally tagged enum
+/// (`#[serde(tag = "versioning_scheme")]`), but that fails here: since `VersVersionRange<V>`
+/// (the variants' payload) *also* has its own `versioning_scheme` field, that field is no
+/// longer available once the tag has been consumed, and deserialization fails with "missing
+/// field `versioning_scheme`". This mirrors a known serde limitation (see
+/// serde-rs/serde#1560).
+///
+/// The workaround below buffers the input into a `serde_json::Value` and re-dispatches based
+/// on the `versioning_scheme` field. Building a `serde_json::Value` requires
+/// `deserialize_any`, which non-self-describing formats (bincode, postcard, ...) do not
+/// support, so this impl only works with self-describing formats and is intended for JSON
+/// specifically; other formats should not rely on it.
 impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::de::Deserializer<'de>,
     {
-        // `DynamicVersionRangeInner`'s derived `Deserialize` uses `#[serde(tag =
-        // "versioning_scheme")]` (internal tagging), which requires serde to consume the
-        // `versioning_scheme` field to pick the variant before deserializing the rest.
-        // Since `VersVersionRange<V>` (the variants' payload) *also* has its own
-        // `versioning_scheme` field, that field is no longer available once the tag has
-        // been consumed, and deserialization fails with "missing field
-        // `versioning_scheme`". This mirrors a known serde limitation (see
-        // serde-rs/serde#1560).
-        //
-        // Work around it by buffering the input into a `serde_json::Value` (which can be
-        // built from any `Deserializer`, not just JSON input), reading the
-        // `versioning_scheme` field ourselves to pick the variant, and then deserializing
-        // the *whole* buffered value (tag field included) into that variant's concrete
-        // type directly.
         let value = serde_json::Value::deserialize(deserializer)?;
         let scheme = value
             .get("versioning_scheme")
@@ -494,6 +497,16 @@ mod tests {
         assert_eq!(range1, range2);
         // Both should parse to the same SemVer range
         assert_eq!(range1.constraints(), range3.constraints());
+    }
+
+    #[test]
+    fn test_dynamic_serde_json_roundtrip() {
+        for input in ["vers:npm/>=1.0.0|<2.0.0", "vers:deb/>=1.0|<<2.0"] {
+            let range: DynamicVersionRange = input.parse().unwrap();
+            let json = serde_json::to_string(&range).unwrap();
+            let roundtripped: DynamicVersionRange = serde_json::from_str(&json).unwrap();
+            assert_eq!(range, roundtripped);
+        }
     }
 
     #[test]
