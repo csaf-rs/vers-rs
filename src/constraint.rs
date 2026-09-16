@@ -175,6 +175,7 @@ impl<V: VersionType> VersionConstraint<V> {
             });
         }
 
+        // Explicit '=' prefix is forbidden per spec update #95;
         let (comparator, version) = if let Some(stripped) = constraint_str.strip_prefix(">=") {
             (Comparator::GreaterThanOrEqual, stripped)
         } else if let Some(stripped) = constraint_str.strip_prefix("<=") {
@@ -186,8 +187,17 @@ impl<V: VersionType> VersionConstraint<V> {
         } else if let Some(stripped) = constraint_str.strip_prefix('<') {
             (Comparator::LessThan, stripped)
         } else {
+            // without any prefix we assume Equal
+            // Equal comparator is strictly implicit (e.g., "1.2.3", not "=1.2.3")
             (Comparator::Equal, constraint_str)
         };
+
+        if constraint_str.starts_with('=') {
+            return Err(VersError::InvalidConstraint(format!(
+                "Explicit equality operator is not allowed; use a bare version without a leading '=': {}",
+                constraint_str
+            )));
+        }
 
         let version = version.trim();
         if version.is_empty() && comparator != Comparator::Any {
