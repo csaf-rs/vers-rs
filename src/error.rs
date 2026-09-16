@@ -43,6 +43,11 @@ pub enum VersError {
 
     #[error("Invalid version format for scheme {0}: {1}, error was: {2}")]
     InvalidVersionFormat(String, String, String),
+
+    /// A value could not be (de)serialized across the wasm ABI boundary.
+    #[cfg(feature = "wasm")]
+    #[error("WASM (de)serialization error: {0}")]
+    Serialization(String),
 }
 
 /// Convert VersError into a JS exception value when targeting wasm.
@@ -50,6 +55,15 @@ pub enum VersError {
 impl From<VersError> for JsValue {
     fn from(e: VersError) -> JsValue {
         JsValue::from(JsError::new(&e.to_string()))
+    }
+}
+
+/// Convert a `tsify` (de)serialization error into a `VersError` when a value
+/// fails to cross the wasm ABI boundary via [`tsify::Ts`].
+#[cfg(feature = "wasm")]
+impl From<tsify::Error> for VersError {
+    fn from(e: tsify::Error) -> Self {
+        VersError::Serialization(e.to_string())
     }
 }
 
