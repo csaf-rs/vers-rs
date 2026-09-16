@@ -11,7 +11,7 @@ jobs:
       - name: Update rustup
         run: rustup update stable --no-self-update
       - name: Run shared format, clippy and doc checks
-        uses: csaf-rs/shared-workflows/.github/actions/rust-checks@4828cd545465d4faade7eb410621ad7d8954f0dc # v1.9.0
+        uses: csaf-rs/shared-workflows/.github/actions/rust-checks@a55e51a118eb3d0beae0fed4a616eec29dc01ca2 # v1.10.0
         with:
           doc-extra-args: "--all-features"
       - name: Prepare targets
@@ -27,7 +27,7 @@ jobs:
       - name: Build wasm target
         run: cargo build --locked --workspace --target wasm32-unknown-unknown --verbose
       - name: Publish dry-run
-        uses: csaf-rs/shared-workflows/.github/actions/cargo-publish-dry-run@4828cd545465d4faade7eb410621ad7d8954f0dc # v1.9.0
+        uses: csaf-rs/shared-workflows/.github/actions/cargo-publish-dry-run@a55e51a118eb3d0beae0fed4a616eec29dc01ca2 # v1.10.0
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -43,4 +43,4 @@ jobs:
           npm pack --dry-run
 
   coverage:
-    uses: csaf-rs/shared-workflows/.github/workflows/rust-coverage.yml@4828cd545465d4faade7eb410621ad7d8954f0dc # v1.9.0
+    uses: csaf-rs/shared-workflows/.github/workflows/rust-coverage.yml@a55e51a118eb3d0beae0fed4a616eec29dc01ca2 # v1.10.0
