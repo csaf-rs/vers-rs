@@ -11,7 +11,7 @@ use crate::VersVersionRange;
 use crate::{Comparator, VersError};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str::FromStr;
 
 /// Trait for version types that support native (scheme-specific) syntax.
@@ -62,20 +62,22 @@ pub trait NativeVersionConverter: VersionType {
     /// each segment. Schemes whose native syntax doesn't use `|` as a delimiter
     /// should override this method.
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
-        let segments: Vec<&str> = raw
-            .trim_matches('|')
-            .split('|')
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if segments.is_empty() {
+        let raw = raw.trim();
+        if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        segments
-            .iter()
-            .map(|s| Self::from_native_constraint(s))
-            .collect()
+        let segments: Vec<&str> = raw.split('|').map(|s| s.trim()).collect();
+
+        let mut constraints = Vec::new();
+        for segment in segments {
+            if segment.is_empty() {
+                return Err(VersError::EmptyConstraints);
+            }
+            constraints.push(Self::from_native_constraint(segment)?);
+        }
+
+        Ok(constraints)
     }
 
     /// Parse a single native constraint string into one or more `VersionConstraint`s.
@@ -227,5 +229,14 @@ impl<V: VersionType> VersionConstraint<V> {
             comparator,
             version: parsed_version,
         })
+    }
+}
+
+impl<V: VersionType> Display for VersionConstraint<V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self.comparator {
+            Comparator::Equal => write!(f, "{}", self.version), // Implicit equal prints no operator
+            _ => write!(f, "{}{}", self.comparator, self.version), // Others print operator + version
+        }
     }
 }
