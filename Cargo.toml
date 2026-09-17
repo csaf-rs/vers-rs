@@ -8,6 +8,9 @@ edition = "2024"
 description = "A library for parsing and checking version range specifiers"
 license = "Apache-2.0"
 
+[lints.rust]
+unsafe_code = "forbid"
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
