@@ -8,11 +8,14 @@ edition = "2024"
 description = "A library for parsing and checking version range specifiers"
 license = "Apache-2.0"
 
+[lints.rust]
+unsafe_code = "forbid"
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["wasm"]
+default = []
 wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:tsify", "dep:serde-wasm-bindgen"]
 
 [dependencies]
@@ -24,4 +27,8 @@ wasm-bindgen = { version = "0.2.104", optional = true }
 js-sys = { version = "*", optional = true }
 tsify = { version = "*", optional = true }
 serde = { version = "1.0", features = ["derive"] }
-serde-wasm-bindgen = { version = "0.5", optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+serde_json = "1.0.151"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

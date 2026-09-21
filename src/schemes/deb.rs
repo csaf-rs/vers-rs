@@ -7,16 +7,16 @@ use std::cmp::Ordering;
 use std::str::FromStr;
 
 /// Scheme identifier string for Debian versions
-pub static DEB_SCHEME: &str = "deb";
+pub const DEB_SCHEME: &str = "deb";
 
 /// Macro to create InvalidVersionFormat errors for Debian versions
 macro_rules! deb_format_error {
     ($s:expr, $msg:expr) => {
-        VersError::InvalidVersionFormat(DEB_SCHEME, $s.to_string(), $msg.into())
+        VersError::InvalidVersionFormat(DEB_SCHEME.to_string(), $s.to_string(), $msg.into())
     };
 }
 
-/// Debian version according to dpkg version format: [epoch:]upstream[-debian]
+/// Debian version according to dpkg version format: `[epoch:]upstream[-debian]`
 ///
 /// This implementation follows Debian Policy version comparison rules:
 /// - Epoch numeric (default 0)
@@ -24,6 +24,7 @@ macro_rules! deb_format_error {
 /// - Tilde '~' sorts before the end and before any other character
 /// - Sequences of digits are compared numerically; non-digits lexicographically
 #[derive(Clone, Debug, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct DebVersion {
     epoch: u64,
     upstream: String,
