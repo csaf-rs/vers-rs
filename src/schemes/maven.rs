@@ -18,7 +18,7 @@ pub static MAVEN_SCHEME: &str = "maven";
 
 #[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-pub struct MavenVersion(String);
+pub struct MavenVersion(pub String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum MavenItem {
@@ -36,12 +36,16 @@ impl NativeVersionConverter for MavenVersion {
     const SCHEME_NAME: &'static str = "maven";
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
+        if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
+            return Err(VersError::InvalidConstraint(
+                "Control characters (tabs, newlines, carriage returns) are not permitted in native version ranges".to_string(),
+            ));
+        }
         let raw = raw.trim();
         if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        // Split by pipe first for disjunctions
         let segments: Vec<&str> = raw
             .trim_matches('|')
             .split('|')
@@ -55,8 +59,6 @@ impl NativeVersionConverter for MavenVersion {
 
         let mut all_constraints = Vec::new();
         for segment in segments {
-            // A segment could be multiple comma-separated intervals like [1.0,2.0],[3.0,4.0]
-            // We need to split by comma only when outside of brackets/parentheses.
             let mut current_interval = String::new();
             let mut depth = 0;
             let mut sub_segments = Vec::new();
@@ -125,7 +127,6 @@ impl MavenVersion {
             )]);
         }
 
-        // Handle Maven interval notation like [1.0,2.0], (1.0,2.0), or single [1.0]
         if (raw.starts_with('[') || raw.starts_with('('))
             && (raw.ends_with(']') || raw.ends_with(')'))
         {
@@ -144,7 +145,6 @@ impl MavenVersion {
             let mut constraints = Vec::new();
 
             if parts.len() == 1 {
-                // Single version in brackets like [1.0] means (implicit) exact match
                 let ver = MavenVersion(parts[0].to_string());
                 let comp = if inclusive_lower && inclusive_upper {
                     Comparator::Equal
@@ -155,7 +155,6 @@ impl MavenVersion {
                 };
                 return Ok(vec![VersionConstraint::new(comp, ver)]);
             } else {
-                // Lower bound
                 if !parts[0].is_empty() {
                     let lower_ver = MavenVersion(parts[0].to_string());
                     let lower_comp = if inclusive_lower {
@@ -166,7 +165,6 @@ impl MavenVersion {
                     constraints.push(VersionConstraint::new(lower_comp, lower_ver));
                 }
 
-                // Upper bound
                 if !parts[1].is_empty() {
                     let upper_ver = MavenVersion(parts[1].to_string());
                     let upper_comp = if inclusive_upper {
@@ -188,7 +186,6 @@ impl MavenVersion {
             return Ok(constraints);
         }
 
-        // Standard single version or explicit comparator fallback
         if let Some(stripped) = raw.strip_prefix(">=") {
             Ok(vec![VersionConstraint::new(
                 Comparator::GreaterThanOrEqual,
@@ -230,7 +227,6 @@ fn parse_maven_version_items(s: &str) -> Vec<MavenItem> {
         return items;
     }
 
-    // Standard Maven normalization: replace '-', '_', '.' with boundaries, and lowercase qualifiers
     let normalized = s.to_ascii_lowercase();
     let bytes = normalized.as_bytes();
     let mut i = 0;
@@ -256,7 +252,6 @@ fn parse_maven_version_items(s: &str) -> Vec<MavenItem> {
             let word = &normalized[start..i];
             items.push(MavenItem::Str(word.to_string()));
         } else {
-            // Separators like '-', '_', '.'
             i += 1;
         }
     }
@@ -264,9 +259,6 @@ fn parse_maven_version_items(s: &str) -> Vec<MavenItem> {
     items
 }
 
-// Maven qualifier canonical weight mapping
-// According to official Maven precedence rules, the weights must be ordered as:
-// alpha < beta < milestone < rc/cr < snapshot < ga/final/"empty" < sp
 fn qualifier_weight(name: &str) -> i32 {
     match name {
         "alpha" => 1,
@@ -276,7 +268,7 @@ fn qualifier_weight(name: &str) -> i32 {
         "snapshot" => 5,
         "" | "ga" | "final" => 6,
         "sp" => 7,
-        _ => 0, // custom qualifiers
+        _ => 0,
     }
 }
 
@@ -299,14 +291,12 @@ impl Ord for MavenVersion {
             match (l, r) {
                 (None, None) => {}
                 (None, Some(ritem)) => {
-                    // Left ran out (e.g. "1.0"), right has a trailing item (e.g. "1.0-SNAPSHOT")
                     return match ritem {
                         MavenItem::Str(s) if qualifier_weight(s) < 6 => Ordering::Greater,
                         _ => Ordering::Less,
                     };
                 }
                 (Some(litem), None) => {
-                    // Right ran out, left has a trailing item
                     return match litem {
                         MavenItem::Str(s) if qualifier_weight(s) < 6 => Ordering::Less,
                         _ => Ordering::Greater,
@@ -350,5 +340,53 @@ impl FromStr for MavenVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(MavenVersion(s.trim().to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_maven_native_inclusive_interval() {
+        let constraints = MavenVersion::from_native("[1.0,2.0]").unwrap();
+        assert_eq!(constraints.len(), 2);
+        assert_eq!(constraints[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(constraints[1].comparator, Comparator::LessThanOrEqual);
+    }
+
+    #[test]
+    fn test_maven_native_single_bracket() {
+        let constraints = MavenVersion::from_native("[1.2.3]").unwrap();
+        assert_eq!(constraints.len(), 1);
+        assert_eq!(constraints[0].comparator, Comparator::Equal);
+    }
+
+    #[test]
+    fn test_maven_malformed_clauses_fails() {
+        let result = MavenVersion::from_native("[1.0,2.0,3.0]");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_maven_literal_tab_fails() {
+        let result = MavenVersion::from_native("[1.0,\t2.0]");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_maven_version_ordering_and_qualifiers() {
+        let alpha = MavenVersion::from_str("1.0-alpha").unwrap();
+        let beta = MavenVersion::from_str("1.0-beta").unwrap();
+        let rc = MavenVersion::from_str("1.0-rc1").unwrap();
+        let snapshot = MavenVersion::from_str("1.0-SNAPSHOT").unwrap();
+        let final_ver = MavenVersion::from_str("1.0").unwrap();
+        let sp = MavenVersion::from_str("1.0-sp").unwrap();
+
+        assert!(alpha < beta);
+        assert!(beta < rc);
+        assert!(rc < snapshot);
+        assert!(snapshot < final_ver);
+        assert!(final_ver < sp);
     }
 }
