@@ -348,6 +348,12 @@ mod tests {
     }
 
     #[test]
+    fn test_vers_cargo_implicit_equals_succeeds() {
+        let result: Result<VersVersionRange<CargoVersion>, _> = "vers:cargo/1.2.3".parse();
+        assert!(result.is_ok());
+    }
+
+    #[test]
     fn test_cargo_percent_decoding() {
         let constraint = CargoVersion::from_native_constraint(">=1.2.3").unwrap();
         assert_eq!(constraint.version.0.major, 1);
@@ -360,7 +366,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cargo_literal_whitespace_fails() {
+    fn test_cargo_literal_tab_fails() {
         let result = CargoVersion::from_native(">=1.2.3,\t<2.0.0");
         assert!(result.is_err());
     }
