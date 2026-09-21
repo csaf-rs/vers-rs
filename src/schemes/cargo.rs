@@ -339,18 +339,16 @@ impl FromStr for CargoVersion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    //use crate::VersVersionRange;
+    use crate::VersVersionRange;
 
-    // fix-15 not yet merged
-    //#[test]
-    //fn test_vers_cargo_explicit_equals_fails() {
-    //    let result: Result<VersVersionRange<CargoVersion>, _> = "vers:cargo/=1.2.3".parse();
-    //    assert!(result.is_err());
-    //}
+    #[test]
+    fn test_vers_cargo_explicit_equals_fails() {
+        let result: Result<VersVersionRange<CargoVersion>, _> = "vers:cargo/=1.2.3".parse();
+        assert!(result.is_err());
+    }
 
     #[test]
     fn test_cargo_percent_decoding() {
-        // e.g., version with percent-encoded space or tag
         let constraint = CargoVersion::from_native_constraint(">=1.2.3").unwrap();
         assert_eq!(constraint.version.0.major, 1);
     }
