@@ -32,7 +32,7 @@ impl NativeVersionConverter for CargoVersion {
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
             return Err(VersError::InvalidConstraint(
-                "Literal whitespace not allowed".to_string(),
+                "Control characters (tabs, newlines, carriage returns) are not permitted in native version ranges".to_string(),
             ));
         }
         let raw = raw.trim();
