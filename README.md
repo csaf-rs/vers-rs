@@ -31,6 +31,27 @@ assert!(dynamic_range.contains("1.5.0".to_string()).unwrap());
 assert!(!dynamic_range.contains("2.0.0".to_string()).unwrap());
 ```
 
+## Development
+
+### Testing
+
+Native tests run with the usual `cargo test`.
+
+WASM-specific tests (using `#[wasm_bindgen_test]` in `src/wasm.rs`) only run
+when targeting `wasm32-unknown-unknown`, and are best run with
+[`wasm-pack`](https://crates.io/crates/wasm-pack), which takes care of
+installing a matching `wasm-bindgen` CLI version automatically:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
+wasm-pack test --node --features wasm
+```
+
+Node.js must be available on `PATH` for the `--node` runner. Use
+`--headless --chrome` or `--headless --firefox` instead to run in a headless
+browser.
+
 ## Features
 
 - Parse version range specifiers in the format `vers:<versioning-scheme>/<version-constraint>|<version-constraint>|...`

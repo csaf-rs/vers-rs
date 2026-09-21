@@ -11,7 +11,7 @@ use crate::VersVersionRange;
 use crate::{Comparator, VersError};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
-use std::fmt::{Debug, Display};
+use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::str::FromStr;
 
 /// Trait for version types that support native (scheme-specific) syntax.
@@ -62,20 +62,22 @@ pub trait NativeVersionConverter: VersionType {
     /// each segment. Schemes whose native syntax doesn't use `|` as a delimiter
     /// should override this method.
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
-        let segments: Vec<&str> = raw
-            .trim_matches('|')
-            .split('|')
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if segments.is_empty() {
+        let raw = raw.trim();
+        if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        segments
-            .iter()
-            .map(|s| Self::from_native_constraint(s))
-            .collect()
+        let segments: Vec<&str> = raw.split('|').map(|s| s.trim()).collect();
+
+        let mut constraints = Vec::new();
+        for segment in segments {
+            if segment.is_empty() {
+                return Err(VersError::EmptyConstraints);
+            }
+            constraints.push(Self::from_native_constraint(segment)?);
+        }
+
+        Ok(constraints)
     }
 
     /// Parse a single native constraint string into one or more `VersionConstraint`s.
@@ -175,6 +177,7 @@ impl<V: VersionType> VersionConstraint<V> {
             });
         }
 
+        // Explicit '=' prefix is forbidden per spec update #95;
         let (comparator, version) = if let Some(stripped) = constraint_str.strip_prefix(">=") {
             (Comparator::GreaterThanOrEqual, stripped)
         } else if let Some(stripped) = constraint_str.strip_prefix("<=") {
@@ -186,8 +189,17 @@ impl<V: VersionType> VersionConstraint<V> {
         } else if let Some(stripped) = constraint_str.strip_prefix('<') {
             (Comparator::LessThan, stripped)
         } else {
+            // without any prefix we assume Equal
+            // Equal comparator is strictly implicit (e.g., "1.2.3", not "=1.2.3")
             (Comparator::Equal, constraint_str)
         };
+
+        if constraint_str.starts_with('=') {
+            return Err(VersError::InvalidConstraint(format!(
+                "Explicit equality operator is not allowed; use a bare version without a leading '=': {}",
+                constraint_str
+            )));
+        }
 
         let version = version.trim();
         if version.is_empty() && comparator != Comparator::Any {
@@ -217,5 +229,14 @@ impl<V: VersionType> VersionConstraint<V> {
             comparator,
             version: parsed_version,
         })
+    }
+}
+
+impl<V: VersionType> Display for VersionConstraint<V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self.comparator {
+            Comparator::Equal => write!(f, "{}", self.version), // Implicit equal prints no operator
+            _ => write!(f, "{}{}", self.comparator, self.version), // Others print operator + version
+        }
     }
 }
