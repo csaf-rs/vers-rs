@@ -24,7 +24,6 @@
 use crate::Comparator;
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
-use crate::constraint::NativeVersionConverter;
 use crate::constraint::VersionType;
 use crate::error::VersError;
 use crate::range::VersionRange;
@@ -404,48 +403,54 @@ impl<V: VersionType> VersVersionRange<V> {
     }
 }
 
-impl<V: NativeVersionConverter> FromStr for VersVersionRange<V> {
+impl<V: VersionType> FromStr for VersVersionRange<V> {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Remove all spaces and tabs
-        let s = s.replace(|c: char| c.is_whitespace(), "");
+        // Enforce that control characters are prohibited in canonical constraints
+        if s.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
+            return Err(VersError::InvalidConstraint(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string(),
+            ));
+        }
 
-        // Split on the first unencoded colon
-        // additional validate URI scheme
         let parts: Vec<&str> = s.splitn(2, ':').collect();
         if parts.len() != 2 || parts[0] != "vers" {
             return Err(VersError::InvalidScheme);
         }
 
-        // Split on the first unencoded slash separating scheme and constraints
         let specifier_parts: Vec<&str> = parts[1].splitn(2, '/').collect();
         if specifier_parts.len() != 2 {
             return Err(VersError::MissingVersioningScheme);
         }
 
-        // Get versioning scheme
         let versioning_scheme = specifier_parts[0].to_lowercase();
         if versioning_scheme.is_empty() {
             return Err(VersError::MissingVersioningScheme);
         }
 
-        // Get constraint string
         let constraints_str = specifier_parts[1].trim();
         if constraints_str.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        // Handle star constraint
         if constraints_str == "*" {
             return Ok(Self {
                 versioning_scheme,
-                constraints: vec![VersionConstraint::new(Any, V::default())],
+                constraints: vec![VersionConstraint::new(Comparator::Any, V::default())],
             });
         }
 
-        // Delegate constraint parsing entirely to the scheme's native converter
-        let constraints = V::from_native(constraints_str)?;
+        // Split on '|' and delegate each segment to VersionConstraint::parse
+        let segments: Vec<&str> = constraints_str.split('|').map(|s| s.trim()).collect();
+        let mut constraints = Vec::new();
+        for segment in segments {
+            if segment.is_empty() {
+                return Err(VersError::EmptyConstraints);
+            }
+            constraints.push(VersionConstraint::<V>::parse(segment)?);
+        }
 
         let mut range = Self {
             versioning_scheme,

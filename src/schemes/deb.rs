@@ -309,13 +309,13 @@ fn compare_digit_sequence(a: &mut &str, b: &mut &str) -> Ordering {
 #[cfg(test)]
 mod tests {
     use crate::Comparator;
-    use crate::VersError;
     use crate::range::VersionRange;
     use crate::range::dynamic::DynamicVersionRange;
 
     #[test]
     fn test_dynamic_parse_deb() {
-        let range: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        // Native parsing supports <<
+        let range = DynamicVersionRange::parse_native("deb", "<<1.0").unwrap();
         assert_eq!(range.versioning_scheme(), "deb");
         assert_eq!(range.constraints().len(), 1);
         assert_eq!(range.constraints()[0].comparator, Comparator::LessThan);
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_deb_version_ordering_basic() {
-        let range: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        let range = DynamicVersionRange::parse_native("deb", "<<1.0").unwrap();
         assert!(range.contains("0.9".to_string()).unwrap());
         assert!(!range.contains("1.0".to_string()).unwrap());
     }
@@ -332,10 +332,10 @@ mod tests {
     #[test]
     fn test_deb_version_ordering_tilde_and_epoch() {
         // 1.0~beta < 1.0
-        let range1: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
+        let range1 = DynamicVersionRange::parse_native("deb", "<<1.0").unwrap();
         assert!(range1.contains("1.0~beta".to_string()).unwrap());
 
-        let range2: DynamicVersionRange = "vers:deb/>>2.0".parse().unwrap();
+        let range2 = DynamicVersionRange::parse_native("deb", ">>2.0").unwrap();
         // 1:1.0 > 2.0 because epoch 1 > 0
         assert!(range2.contains("1:1.0".to_string()).unwrap());
         assert!(!range2.contains("2.0".to_string()).unwrap());
@@ -343,53 +343,52 @@ mod tests {
 
     #[test]
     fn test_deb_valid_comparators() {
-        // << maps to LessThan
-        let range: DynamicVersionRange = "vers:deb/<<1.0".parse().unwrap();
-        assert_eq!(range.constraints()[0].comparator, Comparator::LessThan);
+        // Test native comparators via parse_native
+        let range_lt = DynamicVersionRange::parse_native("deb", "<<1.0").unwrap();
+        assert_eq!(range_lt.constraints()[0].comparator, Comparator::LessThan);
 
-        // <= maps to LessThanOrEqual
-        let range: DynamicVersionRange = "vers:deb/<=1.0".parse().unwrap();
+        let range_lte = DynamicVersionRange::parse_native("deb", "<=1.0").unwrap();
         assert_eq!(
-            range.constraints()[0].comparator,
+            range_lte.constraints()[0].comparator,
             Comparator::LessThanOrEqual
         );
 
-        // = maps to Equal
-        let range: DynamicVersionRange = "vers:deb/=1.0".parse().unwrap();
-        assert_eq!(range.constraints()[0].comparator, Comparator::Equal);
+        let range_eq = DynamicVersionRange::parse_native("deb", "=1.0").unwrap();
+        assert_eq!(range_eq.constraints()[0].comparator, Comparator::Equal);
 
-        // >= maps to GreaterThanOrEqual
-        let range: DynamicVersionRange = "vers:deb/>=1.0".parse().unwrap();
+        let range_gte = DynamicVersionRange::parse_native("deb", ">=1.0").unwrap();
         assert_eq!(
-            range.constraints()[0].comparator,
+            range_gte.constraints()[0].comparator,
             Comparator::GreaterThanOrEqual
         );
 
-        // >> maps to GreaterThan
-        let range: DynamicVersionRange = "vers:deb/>>1.0".parse().unwrap();
-        assert_eq!(range.constraints()[0].comparator, Comparator::GreaterThan);
+        let range_gt = DynamicVersionRange::parse_native("deb", ">>1.0").unwrap();
+        assert_eq!(
+            range_gt.constraints()[0].comparator,
+            Comparator::GreaterThan
+        );
     }
 
     #[test]
     fn test_deb_invalid_comparators_rejected() {
-        // Single < is not a valid Debian comparator
-        let result: Result<DynamicVersionRange, VersError> = "vers:deb/<1.0".parse();
+        // Single < is not a valid Debian native comparator
+        let result = DynamicVersionRange::parse_native("deb", "<1.0");
         assert!(result.is_err());
 
-        // Single > is not a valid Debian comparator
-        let result: Result<DynamicVersionRange, VersError> = "vers:deb/>1.0".parse();
+        // Single > is not a valid Debian native comparator
+        let result = DynamicVersionRange::parse_native("deb", ">1.0");
         assert!(result.is_err());
 
-        // != is not a valid Debian comparator
-        let result: Result<DynamicVersionRange, VersError> = "vers:deb/!=1.0".parse();
+        // != is not a valid Debian native comparator
+        let result = DynamicVersionRange::parse_native("deb", "!=1.0");
         assert!(result.is_err());
 
-        // >>= is not a valid Debian comparator (>> with version "=1.0" fails)
-        let result: Result<DynamicVersionRange, VersError> = "vers:deb/>>=1.0".parse();
+        // >>= is not a valid Debian native comparator
+        let result = DynamicVersionRange::parse_native("deb", ">>=1.0");
         assert!(result.is_err());
 
-        // <<= is not a valid Debian comparator (<< with version "=1.0" fails)
-        let result: Result<DynamicVersionRange, VersError> = "vers:deb/<<=1.0".parse();
+        // <<= is not a valid Debian native comparator
+        let result = DynamicVersionRange::parse_native("deb", "<<=1.0");
         assert!(result.is_err());
     }
 
@@ -397,7 +396,6 @@ mod tests {
     fn test_deb_equality_consistent_with_ordering() {
         use super::DebVersion;
 
-        // A version with empty debian_revision should equal one with "0"
         let a = DebVersion {
             epoch: 0,
             upstream: "1.0".to_string(),
@@ -409,7 +407,6 @@ mod tests {
             debian_revision: "0".to_string(),
         };
 
-        // Equality must be consistent with Ord::cmp
         assert_eq!(a, b);
         assert!(!(a < b));
         assert!(!(a > b));
@@ -423,7 +420,6 @@ mod tests {
 
     #[test]
     fn test_deb_parse_native_normalizes() {
-        // parse_native should normalize: >1.0|>2.0 simplifies to >1.0
         let range = DynamicVersionRange::parse_native("deb", ">>1.0|>>2.0").unwrap();
         assert_eq!(range.constraints().len(), 1);
         assert_eq!(range.constraints()[0].comparator, Comparator::GreaterThan);
