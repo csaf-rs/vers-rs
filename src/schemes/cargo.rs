@@ -16,7 +16,7 @@ use std::str::FromStr;
 
 pub const CARGO_SCHEME: &str = "cargo";
 
-#[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Display, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct CargoVersion(Version);
 
@@ -95,6 +95,7 @@ impl CargoVersion {
             return expand_tilde(stripped.trim());
         }
 
+        let is_caret = raw.starts_with('^');
         let version_part = if let Some(stripped) = raw.strip_prefix('^') {
             stripped.trim()
         } else {
@@ -131,6 +132,17 @@ impl CargoVersion {
         }
         if let Some(stripped) = version_part.strip_prefix('=') {
             let v = parse_version_loose(stripped, raw)?;
+            return Ok(vec![VersionConstraint::new(
+                Comparator::Equal,
+                CargoVersion(v),
+            )]);
+        }
+
+        // Cargo-Spezialregel für Pre-Releases ohne expliziten Operator (z.B. "1.0.0-alpha"):
+        // Wenn die Version ein Pre-Release hat und KEIN Caret ('^') davor steht,
+        // erzwingt Cargo eine exakte Übereinstimmung (kein automatisches Update auf z.B. 1.0.1-alpha).
+        let v = parse_version_loose(version_part, raw)?;
+        if !v.pre.is_empty() && !is_caret {
             return Ok(vec![VersionConstraint::new(
                 Comparator::Equal,
                 CargoVersion(v),
@@ -194,8 +206,17 @@ fn expand_tilde(s: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersErr
 }
 
 fn expand_caret_or_default(s: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
-    let (_, dots, _, _) = extract_core_and_dots(s);
+    let (_, dots, pre_release, _) = extract_core_and_dots(s);
     let v = parse_version_loose(s, s)?;
+
+    // If the request has a pre-release, it is restricted to the same patch branch
+    if pre_release.is_some() {
+        let upper = Version::new(v.major, v.minor, v.patch);
+        return Ok(vec![
+            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v)),
+            VersionConstraint::new(Comparator::LessThanOrEqual, CargoVersion(upper)),
+        ]);
+    }
 
     if dots == 2 {
         let upper = if v.major > 0 {
@@ -292,6 +313,14 @@ fn extract_core_and_dots(s: &str) -> (String, usize, Option<&str>, Option<&str>)
     (core_part.to_string(), dots, pre_release, build)
 }
 
+impl PartialEq for CargoVersion {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl Eq for CargoVersion {}
+
 impl PartialOrd for CargoVersion {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -300,7 +329,24 @@ impl PartialOrd for CargoVersion {
 
 impl Ord for CargoVersion {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.cmp(&other.0)
+        let v1 = &self.0;
+        let v2 = &other.0;
+
+        let v1_has_pre = !v1.pre.is_empty();
+        let v2_has_pre = !v2.pre.is_empty();
+
+        // Cargo rule: A pre-release is strictly smaller than a stable version,
+        // if the requirement itself does not have a pre-release.
+        if !v1_has_pre && v2_has_pre {
+            // If v1 (threshold) is stable and v2 (target) is a pre-release,
+            // we treat v2 as a smaller value so that `>= v1` fails.
+            return Ordering::Less;
+        }
+        if v1_has_pre && !v2_has_pre {
+            return Ordering::Greater;
+        }
+
+        v1.cmp(v2)
     }
 }
 
@@ -318,6 +364,7 @@ impl FromStr for CargoVersion {
 mod tests {
     use super::*;
     use crate::VersVersionRange;
+    use crate::range::VersionRange;
 
     #[test]
     fn test_vers_cargo_explicit_equals_fails() {
@@ -362,5 +409,24 @@ mod tests {
         // Full semver remains untouched
         let v3 = parse_version_loose("1.2.3+build.123", "1.2.3+build.123").unwrap();
         assert_eq!(v3, Version::parse("1.2.3+build.123").unwrap());
+    }
+
+    #[test]
+    fn lower_bound_version_range_should_not_contain_higher_prerelease_version() {
+        // Version requirements exclude pre-release versions, such as 1.0.0-alpha, unless specifically asked for.
+        let target_version = CargoVersion::from_str("1.5.0-alpha").unwrap();
+        let lower_bound_version_range =
+            CargoVersion::from_native_string("cargo", "^1.2.4").unwrap();
+        assert!(!lower_bound_version_range.contains(target_version).unwrap());
+    }
+
+    #[test]
+    fn prerelease_version_range_should_not_allow_version_update_to_higher_prerelease() {
+        // Note that this only works on the same release version, foo = "1.0.0-alpha" will not allow updating to foo = "1.0.1-alpha" or foo = "1.0.1-beta".
+        let target_version = CargoVersion::from_str("1.0.1-alpha").unwrap();
+        let lower_bound_version_range =
+            CargoVersion::from_native_string("cargo", "1.0.0-alpha").unwrap();
+
+        assert!(!lower_bound_version_range.contains(target_version).unwrap());
     }
 }
