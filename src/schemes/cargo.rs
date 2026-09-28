@@ -363,8 +363,8 @@ impl FromStr for CargoVersion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::VersVersionRange;
     use crate::range::VersionRange;
+    use crate::{DynamicVersionRange, VersVersionRange};
 
     #[test]
     fn test_vers_cargo_explicit_equals_fails() {
@@ -428,5 +428,14 @@ mod tests {
             CargoVersion::from_native_string("cargo", "1.0.0-alpha").unwrap();
 
         assert!(!lower_bound_version_range.contains(target_version).unwrap());
+    }
+
+    #[test]
+    fn test_cargo_with_prerelease_should_not_contain() {
+        let range: DynamicVersionRange = "vers:cargo/>=1.0.0|<2.0.0".parse().unwrap();
+        let should_be_false = range
+            .contains("2.0.0-alpha".parse().unwrap())
+            .expect("contains should succeed");
+        assert!(!should_be_false);
     }
 }
