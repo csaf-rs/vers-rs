@@ -438,4 +438,40 @@ mod tests {
             .expect("contains should succeed");
         assert!(!should_be_false);
     }
+
+    #[test]
+    fn test_cargo_range_should_not_contain_higher_prerelease() {
+        let range: DynamicVersionRange = "vers:cargo/>=1.2.4|<1.3.0".parse().unwrap();
+        let should_be_false = range
+            .contains("1.5.0-alpha".parse().unwrap())
+            .expect("contains should succeed");
+        assert!(!should_be_false);
+    }
+
+    #[test]
+    fn test_cargo_prerelease_range_should_not_cross_patch() {
+        let range: DynamicVersionRange = "vers:cargo/1.0.0-alpha".parse().unwrap();
+        let should_be_false = range
+            .contains("1.0.1-alpha".parse().unwrap())
+            .expect("contains should succeed");
+        assert!(!should_be_false);
+    }
+
+    #[test]
+    fn test_cargo_explicit_prerelease_range_should_contain_same_patch() {
+        let range: DynamicVersionRange = "vers:cargo/>=1.0.0-alpha".parse().unwrap();
+        let should_be_true = range
+            .contains("1.0.0-beta".parse().unwrap())
+            .expect("contains should succeed");
+        assert!(should_be_true);
+    }
+
+    #[test]
+    fn test_cargo_stable_range_ignores_prerelease() {
+        let range: DynamicVersionRange = "vers:cargo/>=1.2.0|<1.3.0".parse().unwrap();
+        let should_be_false = range
+            .contains("1.2.3-beta".parse().unwrap())
+            .expect("contains should succeed");
+        assert!(!should_be_false);
+    }
 }
