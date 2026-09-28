@@ -247,7 +247,7 @@ fn expand_caret_or_default(
 }
 
 fn expand_wildcard(raw: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
-    if raw == "*" || raw == "==*" {
+    if raw == "*" {
         return Ok(vec![VersionConstraint::new(
             Comparator::Any,
             CargoVersion::default(),
