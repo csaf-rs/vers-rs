@@ -2,7 +2,6 @@ use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{cargo::CargoVersion, deb::DebVersion, semver::SemVer};
 use crate::{VersError, VersVersionRange, VersionConstraint};
-use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -15,7 +14,7 @@ use std::sync::OnceLock;
 /// (internal tagging) would require serde to buffer the input via `deserialize_any`. That's
 /// fine here since `DynamicVersionRange`'s `Deserialize` impl is explicitly JSON-only (see
 /// its doc comment below), but it's why this can't be a plain derive.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 enum DynamicVersionRangeInner {
     /// SemVer-based range (for "semver" and "npm" schemes)
@@ -23,7 +22,6 @@ enum DynamicVersionRangeInner {
     /// Debian dpkg-style versioning ("deb" scheme)
     Deb(VersVersionRange<DebVersion>),
     /// Cargo-based range ("cargo" scheme)
-    #[serde(rename = "cargo")]
     Cargo(VersVersionRange<CargoVersion>),
 }
 
