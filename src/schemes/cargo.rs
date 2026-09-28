@@ -40,32 +40,20 @@ impl NativeVersionConverter for CargoVersion {
             return Err(VersError::EmptyConstraints);
         }
 
-        let segments: Vec<&str> = raw
-            .trim_matches('|')
-            .split('|')
-            .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
-            .collect();
-
+        let segments: Vec<&str> = raw.split(',').collect();
         if segments.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
         let mut all_constraints = Vec::new();
-        for segment in segments {
-            if segment.contains(',') {
-                for part in segment.split(',') {
-                    let part = part.trim();
-                    if part.is_empty() {
-                        return Err(VersError::InvalidConstraint(
-                            "Empty constraint clause found".to_string(),
-                        ));
-                    }
-                    all_constraints.extend(Self::parse_single_cargo_spec(part)?);
-                }
-            } else {
-                all_constraints.extend(Self::parse_single_cargo_spec(segment)?);
+        for part in segments {
+            let part = part.trim();
+            if part.is_empty() {
+                return Err(VersError::InvalidConstraint(
+                    "Empty constraint clause found".to_string(),
+                ));
             }
+            all_constraints.extend(Self::parse_single_cargo_spec(part)?);
         }
 
         if all_constraints.is_empty() {
@@ -354,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_cargo_malformed_clauses_fails() {
-        let result = CargoVersion::from_native("1.2.3,,2.0.0");
+        let result = CargoVersion::from_native("    1.2.3,,2.0.0");
         assert!(result.is_err());
     }
 
