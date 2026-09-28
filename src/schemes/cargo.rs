@@ -95,10 +95,10 @@ impl CargoVersion {
             return expand_tilde(stripped.trim());
         }
 
-        let (is_explicit_caret, version_part) = if let Some(stripped) = raw.strip_prefix('^') {
-            (true, stripped.trim())
+        let version_part = if let Some(stripped) = raw.strip_prefix('^') {
+            stripped.trim()
         } else {
-            (false, raw)
+            raw
         };
 
         if let Some(stripped) = version_part.strip_prefix(">=") {
@@ -137,7 +137,7 @@ impl CargoVersion {
             )]);
         }
 
-        expand_caret_or_default(version_part, is_explicit_caret)
+        expand_caret_or_default(version_part)
     }
 }
 
@@ -193,10 +193,7 @@ fn expand_tilde(s: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersErr
     }
 }
 
-fn expand_caret_or_default(
-    s: &str,
-    _explicit: bool,
-) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
+fn expand_caret_or_default(s: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
     let (_, dots, _, _) = extract_core_and_dots(s);
     let v = parse_version_loose(s, s)?;
 
