@@ -92,8 +92,15 @@ impl CargoVersion {
     fn parse_single_cargo_spec(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         let raw = raw.trim();
 
-        if raw.ends_with(".*") || raw == "*" || raw == "==*" {
+        if raw.ends_with(".*") || raw == "*" {
             return expand_wildcard(raw);
+        }
+
+        if raw.starts_with("==") {
+            return Err(VersError::InvalidConstraint(
+                "Operator '==' is not supported by Cargo specification. Use '=' instead."
+                    .to_string(),
+            ));
         }
 
         if let Some(stripped) = raw.strip_prefix('~') {
@@ -106,20 +113,6 @@ impl CargoVersion {
             (false, raw)
         };
 
-        if let Some(stripped) = version_part.strip_prefix("===") {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::Equal,
-                CargoVersion(v),
-            )]);
-        }
-        if let Some(stripped) = version_part.strip_prefix("==") {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::Equal,
-                CargoVersion(v),
-            )]);
-        }
         if let Some(stripped) = version_part.strip_prefix(">=") {
             let v = parse_version_loose(stripped, raw)?;
             return Ok(vec![VersionConstraint::new(
