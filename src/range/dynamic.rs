@@ -30,7 +30,7 @@ enum DynamicVersionRangeInner {
 /// This wrapper provides dynamic dispatch for version ranges, automatically
 /// detecting the versioning scheme and constructing the appropriate typed
 /// version range internally.
-///impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
+///
 /// It currently supports the following schemes:
 /// - "semver" and "npm" schemes using SemVer version type
 ///
