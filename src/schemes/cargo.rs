@@ -159,7 +159,9 @@ impl PartialEq for CargoVersion {
 impl Eq for CargoVersion {}
 
 impl PartialOrd for CargoVersion {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl Ord for CargoVersion {
