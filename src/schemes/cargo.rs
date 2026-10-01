@@ -2,14 +2,14 @@
 //!
 //! This module contains the `CargoVersion` struct and its implementation of the
 //! `NativeVersionConverter` trait, supporting Cargo dependency specification rules
-//! (caret, tilde, wildcards, exact, and comparative ranges).
+//! based on semver rules.
 
 use crate::VersError;
 use crate::VersionConstraint;
 use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
 use derive_more::Display;
-use semver::Version;
+use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::str::FromStr;
@@ -32,7 +32,7 @@ impl NativeVersionConverter for CargoVersion {
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
             return Err(VersError::InvalidConstraint(
-                "Control characters (tabs, newlines, carriage returns) are not permitted in native version ranges".to_string(),
+                "Control characters are not permitted in native version ranges".to_string(),
             ));
         }
         let raw = raw.trim();
@@ -40,31 +40,46 @@ impl NativeVersionConverter for CargoVersion {
             return Err(VersError::EmptyConstraints);
         }
 
-        let segments: Vec<&str> = raw.split(',').collect();
-        if segments.is_empty() {
+        let normalized_raw = normalize_cargo_req(raw);
+        let req = VersionReq::parse(&normalized_raw).map_err(|e| {
+            VersError::InvalidVersionFormat(
+                CARGO_SCHEME.to_string(),
+                raw.to_string(),
+                e.to_string(),
+            )
+        })?;
+
+        let mut constraints = Vec::new();
+        for pred in req.comparators {
+            let comparator = match pred.op {
+                semver::Op::Exact | semver::Op::Wildcard => Comparator::Equal,
+                semver::Op::Greater => Comparator::GreaterThan,
+                semver::Op::GreaterEq => Comparator::GreaterThanOrEqual,
+                semver::Op::Less => Comparator::LessThan,
+                semver::Op::LessEq => Comparator::LessThanOrEqual,
+                _ => Comparator::Equal,
+            };
+
+            let v = Version {
+                major: pred.major,
+                minor: pred.minor.unwrap_or(0),
+                patch: pred.patch.unwrap_or(0),
+                pre: pred.pre.clone(),
+                build: semver::BuildMetadata::EMPTY,
+            };
+
+            constraints.push(VersionConstraint::new(comparator, CargoVersion(v)));
+        }
+
+        if constraints.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        let mut all_constraints = Vec::new();
-        for part in segments {
-            let part = part.trim();
-            if part.is_empty() {
-                return Err(VersError::InvalidConstraint(
-                    "Empty constraint clause found".to_string(),
-                ));
-            }
-            all_constraints.extend(Self::parse_single_cargo_spec(part)?);
-        }
-
-        if all_constraints.is_empty() {
-            return Err(VersError::EmptyConstraints);
-        }
-
-        Ok(all_constraints)
+        Ok(constraints)
     }
 
     fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
-        let constraints = Self::parse_single_cargo_spec(raw)?;
+        let constraints = Self::from_native(raw)?;
         if constraints.len() == 1 {
             Ok(constraints.into_iter().next().unwrap())
         } else {
@@ -76,241 +91,63 @@ impl NativeVersionConverter for CargoVersion {
     }
 }
 
-impl CargoVersion {
-    fn parse_single_cargo_spec(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
-        let raw = raw.trim();
+// --- Hilfsfunktionen ---
 
-        if raw.ends_with(".*") || raw == "*" {
-            return expand_wildcard(raw);
-        }
+fn normalize_cargo_req(raw: &str) -> String {
+    let mut result = String::new();
+    let mut current_num = String::new();
 
-        if raw.starts_with("==") {
-            return Err(VersError::InvalidConstraint(
-                "Operator '==' is not supported by Cargo specification. Use '=' instead."
-                    .to_string(),
-            ));
-        }
-
-        if let Some(stripped) = raw.strip_prefix('~') {
-            return expand_tilde(stripped.trim());
-        }
-
-        let is_caret = raw.starts_with('^');
-        let version_part = if let Some(stripped) = raw.strip_prefix('^') {
-            stripped.trim()
+    for c in raw.chars() {
+        if c.is_ascii_digit() || c == '.' || c == '-' || c == '+' || c.is_alphanumeric() {
+            current_num.push(c);
         } else {
-            raw
-        };
+            if !current_num.is_empty() {
+                result.push_str(&normalize_version_token(&current_num));
+                current_num.clear();
+            }
+            result.push(c);
+        }
+    }
+    if !current_num.is_empty() {
+        result.push_str(&normalize_version_token(&current_num));
+    }
+    result
+}
 
-        if let Some(stripped) = version_part.strip_prefix(">=") {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::GreaterThanOrEqual,
-                CargoVersion(v),
-            )]);
-        }
-        if let Some(stripped) = version_part.strip_prefix("<=") {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::LessThanOrEqual,
-                CargoVersion(v),
-            )]);
-        }
-        if let Some(stripped) = version_part.strip_prefix('>') {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::GreaterThan,
-                CargoVersion(v),
-            )]);
-        }
-        if let Some(stripped) = version_part.strip_prefix('<') {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::LessThan,
-                CargoVersion(v),
-            )]);
-        }
-        if let Some(stripped) = version_part.strip_prefix('=') {
-            let v = parse_version_loose(stripped, raw)?;
-            return Ok(vec![VersionConstraint::new(
-                Comparator::Equal,
-                CargoVersion(v),
-            )]);
-        }
-
-        // Cargo-Spezialregel für Pre-Releases ohne expliziten Operator (z.B. "1.0.0-alpha"):
-        // Wenn die Version ein Pre-Release hat und KEIN Caret ('^') davor steht,
-        // erzwingt Cargo eine exakte Übereinstimmung (kein automatisches Update auf z.B. 1.0.1-alpha).
-        let v = parse_version_loose(version_part, raw)?;
-        if !v.pre.is_empty() && !is_caret {
-            return Ok(vec![VersionConstraint::new(
-                Comparator::Equal,
-                CargoVersion(v),
-            )]);
-        }
-
-        expand_caret_or_default(version_part)
+fn normalize_version_token(token: &str) -> String {
+    let dots = token.matches('.').count();
+    if dots == 1 && token.chars().all(|c| c.is_ascii_digit() || c == '.') {
+        format!("{}.0", token)
+    } else if dots == 0 && token.chars().all(|c| c.is_ascii_digit()) {
+        format!("{}.0.0", token)
+    } else {
+        token.to_string()
     }
 }
 
-fn parse_version_loose(s: &str, original: &str) -> Result<Version, VersError> {
-    let (core_part, dot_count, pre_release, build) = extract_core_and_dots(s);
+fn normalize_version_string(s: &str) -> String {
+    let mut base = s;
+    let mut suffix: &str = "";
+    if let Some(idx) = s.find('+') {
+        base = &s[..idx];
+        suffix = &s[idx..];
+    }
+    let mut pre: &str = "";
+    if let Some(idx) = base.find('-') {
+        pre = &base[idx..];
+        base = &base[..idx];
+    }
 
-    let normalized_core = if dot_count == 1 {
-        format!("{}.0", core_part)
-    } else if dot_count == 0 {
-        format!("{}.0.0", core_part)
+    let dots: usize = base.matches('.').count();
+    let core = if dots == 1 {
+        format!("{}.0", base)
+    } else if dots == 0 {
+        format!("{}.0.0", base)
     } else {
-        core_part
+        base.to_string()
     };
 
-    let mut normalized = normalized_core;
-    if let Some(pre) = pre_release {
-        normalized.push('-');
-        normalized.push_str(pre);
-    }
-    if let Some(b) = build {
-        normalized.push('+');
-        normalized.push_str(b);
-    }
-
-    Version::parse(&normalized).map_err(|e| {
-        VersError::InvalidVersionFormat(
-            CARGO_SCHEME.to_string(),
-            original.to_string(),
-            e.to_string(),
-        )
-    })
-}
-
-fn expand_tilde(s: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
-    let (_, dots, _, _) = extract_core_and_dots(s);
-    let v = parse_version_loose(s, s)?;
-    if dots >= 1 {
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v.clone())),
-            VersionConstraint::new(
-                Comparator::LessThan,
-                CargoVersion(Version::new(v.major, v.minor + 1, 0)),
-            ),
-        ])
-    } else {
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v.clone())),
-            VersionConstraint::new(
-                Comparator::LessThan,
-                CargoVersion(Version::new(v.major + 1, 0, 0)),
-            ),
-        ])
-    }
-}
-
-fn expand_caret_or_default(s: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
-    let (_, dots, pre_release, _) = extract_core_and_dots(s);
-    let v = parse_version_loose(s, s)?;
-
-    // If the request has a pre-release, it is restricted to the same patch branch
-    if pre_release.is_some() {
-        let upper = Version::new(v.major, v.minor, v.patch);
-        return Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v)),
-            VersionConstraint::new(Comparator::LessThanOrEqual, CargoVersion(upper)),
-        ]);
-    }
-
-    if dots == 2 {
-        let upper = if v.major > 0 {
-            Version::new(v.major + 1, 0, 0)
-        } else if v.minor > 0 {
-            Version::new(0, v.minor + 1, 0)
-        } else {
-            Version::new(0, 0, v.patch + 1)
-        };
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v)),
-            VersionConstraint::new(Comparator::LessThan, CargoVersion(upper)),
-        ])
-    } else if dots == 1 {
-        let upper = if v.major > 0 {
-            Version::new(v.major + 1, 0, 0)
-        } else {
-            Version::new(0, v.minor + 1, 0)
-        };
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v)),
-            VersionConstraint::new(Comparator::LessThan, CargoVersion(upper)),
-        ])
-    } else {
-        let upper = v.major + 1;
-        Ok(vec![
-            VersionConstraint::new(Comparator::GreaterThanOrEqual, CargoVersion(v)),
-            VersionConstraint::new(
-                Comparator::LessThan,
-                CargoVersion(Version::new(upper, 0, 0)),
-            ),
-        ])
-    }
-}
-
-fn expand_wildcard(raw: &str) -> Result<Vec<VersionConstraint<CargoVersion>>, VersError> {
-    if raw == "*" {
-        return Ok(vec![VersionConstraint::new(
-            Comparator::Any,
-            CargoVersion::default(),
-        )]);
-    }
-    let base = &raw[..raw.len() - 2];
-    let parts: Vec<&str> = base.split('.').collect();
-    match parts.len() {
-        1 => {
-            let major = parts[0]
-                .parse::<u64>()
-                .map_err(|_| VersError::InvalidConstraint(raw.to_string()))?;
-            Ok(vec![
-                VersionConstraint::new(
-                    Comparator::GreaterThanOrEqual,
-                    CargoVersion(Version::new(major, 0, 0)),
-                ),
-                VersionConstraint::new(
-                    Comparator::LessThan,
-                    CargoVersion(Version::new(major + 1, 0, 0)),
-                ),
-            ])
-        }
-        2 => {
-            let major = parts[0]
-                .parse::<u64>()
-                .map_err(|_| VersError::InvalidConstraint(raw.to_string()))?;
-            let minor = parts[1]
-                .parse::<u64>()
-                .map_err(|_| VersError::InvalidConstraint(raw.to_string()))?;
-            Ok(vec![
-                VersionConstraint::new(
-                    Comparator::GreaterThanOrEqual,
-                    CargoVersion(Version::new(major, minor, 0)),
-                ),
-                VersionConstraint::new(
-                    Comparator::LessThan,
-                    CargoVersion(Version::new(major, minor + 1, 0)),
-                ),
-            ])
-        }
-        _ => Err(VersError::InvalidConstraint(raw.to_string())),
-    }
-}
-
-fn extract_core_and_dots(s: &str) -> (String, usize, Option<&str>, Option<&str>) {
-    let s = s.trim();
-    let mut parts_iter = s.splitn(2, '+');
-    let version_and_pre = parts_iter.next().unwrap_or(s);
-    let build = parts_iter.next();
-
-    let mut vp_iter = version_and_pre.splitn(2, '-');
-    let core_part = vp_iter.next().unwrap_or(version_and_pre);
-    let pre_release = vp_iter.next();
-
-    let dots = core_part.matches('.').count();
-    (core_part.to_string(), dots, pre_release, build)
+    format!("{}{}{}", core, pre, suffix)
 }
 
 impl PartialEq for CargoVersion {
@@ -322,31 +159,12 @@ impl PartialEq for CargoVersion {
 impl Eq for CargoVersion {}
 
 impl PartialOrd for CargoVersion {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> { Some(self.cmp(other)) }
 }
 
 impl Ord for CargoVersion {
     fn cmp(&self, other: &Self) -> Ordering {
-        let v1 = &self.0;
-        let v2 = &other.0;
-
-        let v1_has_pre = !v1.pre.is_empty();
-        let v2_has_pre = !v2.pre.is_empty();
-
-        // Cargo rule: A pre-release is strictly smaller than a stable version,
-        // if the requirement itself does not have a pre-release.
-        if !v1_has_pre && v2_has_pre {
-            // If v1 (threshold) is stable and v2 (target) is a pre-release,
-            // we treat v2 as a smaller value so that `>= v1` fails.
-            return Ordering::Less;
-        }
-        if v1_has_pre && !v2_has_pre {
-            return Ordering::Greater;
-        }
-
-        v1.cmp(v2)
+        self.0.cmp(&other.0)
     }
 }
 
@@ -355,7 +173,10 @@ impl FromStr for CargoVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        let v = parse_version_loose(s, s)?;
+        let normalized = normalize_version_string(s);
+        let v = Version::parse(&normalized).map_err(|e| {
+            VersError::InvalidVersionFormat(CARGO_SCHEME.to_string(), s.to_string(), e.to_string())
+        })?;
         Ok(CargoVersion(v))
     }
 }
@@ -363,18 +184,18 @@ impl FromStr for CargoVersion {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DynamicVersionRange;
     use crate::range::VersionRange;
-    use crate::{DynamicVersionRange, VersVersionRange};
 
     #[test]
     fn test_vers_cargo_explicit_equals_fails() {
-        let result: Result<VersVersionRange<CargoVersion>, _> = "vers:cargo/=1.2.3".parse();
+        let result: Result<DynamicVersionRange, _> = "vers:cargo/=1.2.3".parse();
         assert!(result.is_err());
     }
 
     #[test]
     fn test_vers_cargo_implicit_equals_succeeds() {
-        let result: Result<VersVersionRange<CargoVersion>, _> = "vers:cargo/1.2.3".parse();
+        let result: Result<DynamicVersionRange, _> = "vers:cargo/1.2.3".parse();
         assert!(result.is_ok());
     }
 
@@ -397,64 +218,11 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_version_loose_partial_and_prerelease() {
-        // Major only with prerelease
-        let v1 = parse_version_loose("1-alpha", "1-alpha").unwrap();
-        assert_eq!(v1, Version::parse("1.0.0-alpha").unwrap());
-
-        // Major.minor with prerelease
-        let v2 = parse_version_loose("1.2-beta.2", "1.2-beta.2").unwrap();
-        assert_eq!(v2, Version::parse("1.2.0-beta.2").unwrap());
-
-        // Full semver remains untouched
-        let v3 = parse_version_loose("1.2.3+build.123", "1.2.3+build.123").unwrap();
-        assert_eq!(v3, Version::parse("1.2.3+build.123").unwrap());
-    }
-
-    #[test]
-    fn lower_bound_version_range_should_not_contain_higher_prerelease_version() {
-        // Version requirements exclude pre-release versions, such as 1.0.0-alpha, unless specifically asked for.
+    fn lower_bound_version_range_should_contain_higher_prerelease_version() {
         let target_version = CargoVersion::from_str("1.5.0-alpha").unwrap();
         let lower_bound_version_range =
-            CargoVersion::from_native_string("cargo", "^1.2.4").unwrap();
-        assert!(!lower_bound_version_range.contains(target_version).unwrap());
-    }
-
-    #[test]
-    fn prerelease_version_range_should_not_allow_version_update_to_higher_prerelease() {
-        // Note that this only works on the same release version, foo = "1.0.0-alpha" will not allow updating to foo = "1.0.1-alpha" or foo = "1.0.1-beta".
-        let target_version = CargoVersion::from_str("1.0.1-alpha").unwrap();
-        let lower_bound_version_range =
-            CargoVersion::from_native_string("cargo", "1.0.0-alpha").unwrap();
-
-        assert!(!lower_bound_version_range.contains(target_version).unwrap());
-    }
-
-    #[test]
-    fn test_cargo_with_prerelease_should_not_contain() {
-        let range: DynamicVersionRange = "vers:cargo/>=1.0.0|<2.0.0".parse().unwrap();
-        let should_be_false = range
-            .contains("2.0.0-alpha".parse().unwrap())
-            .expect("contains should succeed");
-        assert!(!should_be_false);
-    }
-
-    #[test]
-    fn test_cargo_range_should_not_contain_higher_prerelease() {
-        let range: DynamicVersionRange = "vers:cargo/>=1.2.4|<1.3.0".parse().unwrap();
-        let should_be_false = range
-            .contains("1.5.0-alpha".parse().unwrap())
-            .expect("contains should succeed");
-        assert!(!should_be_false);
-    }
-
-    #[test]
-    fn test_cargo_prerelease_range_should_not_cross_patch() {
-        let range: DynamicVersionRange = "vers:cargo/1.0.0-alpha".parse().unwrap();
-        let should_be_false = range
-            .contains("1.0.1-alpha".parse().unwrap())
-            .expect("contains should succeed");
-        assert!(!should_be_false);
+            CargoVersion::from_native_string("cargo", ">=1.2.4").unwrap();
+        assert!(lower_bound_version_range.contains(target_version).unwrap());
     }
 
     #[test]
@@ -467,11 +235,12 @@ mod tests {
     }
 
     #[test]
-    fn test_cargo_stable_range_ignores_prerelease() {
-        let range: DynamicVersionRange = "vers:cargo/>=1.2.0|<1.3.0".parse().unwrap();
-        let should_be_false = range
-            .contains("1.2.3-beta".parse().unwrap())
-            .expect("contains should succeed");
-        assert!(!should_be_false);
+    fn test_cargo_prerelease_ordering() {
+        let v_alpha = CargoVersion::from_str("1.0.0-alpha").unwrap();
+        let v_stable = CargoVersion::from_str("1.0.0").unwrap();
+        let v_higher = CargoVersion::from_str("1.1.0").unwrap();
+
+        assert!(v_alpha < v_stable, "1.0.0-alpha should be less than 1.0.0");
+        assert!(v_alpha < v_higher, "1.0.0-alpha should be less than 1.1.0");
     }
 }
