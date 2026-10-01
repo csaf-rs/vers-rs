@@ -1,7 +1,6 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
-use crate::schemes::deb::DebVersion;
-use crate::schemes::semver::SemVer;
+use crate::schemes::{cargo::CargoVersion, deb::DebVersion, semver::SemVer};
 use crate::{VersError, VersVersionRange, VersionConstraint};
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -22,6 +21,8 @@ enum DynamicVersionRangeInner {
     SemVer(VersVersionRange<SemVer>),
     /// Debian dpkg-style versioning ("deb" scheme)
     Deb(VersVersionRange<DebVersion>),
+    /// Cargo-based range ("cargo" scheme)
+    Cargo(VersVersionRange<CargoVersion>),
 }
 
 /// A dynamic version range that automatically detects the versioning scheme.
@@ -42,10 +43,13 @@ enum DynamicVersionRangeInner {
 /// // Parse ranges with different schemes
 /// let npm_range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
 /// let semver_range: DynamicVersionRange = "vers:semver/>=1.0.0|<2.0.0".parse().unwrap();
+/// let cargo_range: DynamicVersionRange = "vers:cargo/>=1.0.0|<2.0.0".parse().unwrap();
 ///
 /// // Check if versions are contained
 /// assert!(npm_range.contains("1.5.0".to_string()).unwrap());
 /// assert!(!npm_range.contains("2.0.0".to_string()).unwrap());
+/// assert!(semver_range.contains("1.5.0".to_string()).unwrap());
+/// assert!(!cargo_range.contains("2.0.0".to_string()).unwrap());
 /// ```
 #[derive(Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -55,7 +59,9 @@ enum DynamicVersionRangeInner {
 // would otherwise infer from this struct's fields. Override the generated TS type to match.
 #[cfg_attr(
     feature = "wasm",
-    tsify(type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion>")
+    tsify(
+        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion>"
+    )
 )]
 pub struct DynamicVersionRange {
     inner: DynamicVersionRangeInner,
@@ -89,6 +95,7 @@ macro_rules! dispatch_inner {
         match $inner {
             DynamicVersionRangeInner::SemVer($range) => $expr,
             DynamicVersionRangeInner::Deb($range) => $expr,
+            DynamicVersionRangeInner::Cargo($range) => $expr,
         }
     };
 }
@@ -125,6 +132,9 @@ impl DynamicVersionRange {
                 DynamicVersionRangeInner::SemVer(SemVer::from_native_string(scheme, raw)?)
             }
             "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(scheme, raw)?),
+            "cargo" => {
+                DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
+            }
             _ => return Err(VersError::UnsupportedVersioningScheme(scheme.to_string())),
         };
 
@@ -221,6 +231,9 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::Deb(range) => {
                 range.contains(version_str.parse::<DebVersion>()?)
             }
+            DynamicVersionRangeInner::Cargo(range) => {
+                range.contains(version_str.parse::<CargoVersion>()?)
+            }
         }
     }
 
@@ -284,6 +297,7 @@ impl FromStr for DynamicVersionRange {
         let inner = match versioning_scheme.as_str() {
             "semver" | "npm" => DynamicVersionRangeInner::SemVer(s.parse()?),
             "deb" => DynamicVersionRangeInner::Deb(s.parse()?),
+            "cargo" => DynamicVersionRangeInner::Cargo(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
         };
 
@@ -338,6 +352,9 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             "deb" => DynamicVersionRangeInner::Deb(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            "cargo" => DynamicVersionRangeInner::Cargo(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             other => {
@@ -501,7 +518,11 @@ mod tests {
 
     #[test]
     fn test_dynamic_serde_json_roundtrip() {
-        for input in ["vers:npm/>=1.0.0|<2.0.0", "vers:deb/>=1.0|<<2.0"] {
+        for input in [
+            "vers:npm/>=1.0.0|<2.0.0",
+            "vers:deb/>=1.0|<2.0",
+            "vers:cargo/>=1.0|<2.0",
+        ] {
             let range: DynamicVersionRange = input.parse().unwrap();
             let json = serde_json::to_string(&range).unwrap();
             let roundtripped: DynamicVersionRange = serde_json::from_str(&json).unwrap();
