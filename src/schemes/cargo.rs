@@ -91,8 +91,6 @@ impl NativeVersionConverter for CargoVersion {
     }
 }
 
-// --- Hilfsfunktionen ---
-
 fn normalize_cargo_req(raw: &str) -> String {
     let mut result = String::new();
     let mut current_num = String::new();
@@ -125,31 +123,6 @@ fn normalize_version_token(token: &str) -> String {
     }
 }
 
-fn normalize_version_string(s: &str) -> String {
-    let mut base = s;
-    let mut suffix: &str = "";
-    if let Some(idx) = s.find('+') {
-        base = &s[..idx];
-        suffix = &s[idx..];
-    }
-    let mut pre: &str = "";
-    if let Some(idx) = base.find('-') {
-        pre = &base[idx..];
-        base = &base[..idx];
-    }
-
-    let dots: usize = base.matches('.').count();
-    let core = if dots == 1 {
-        format!("{}.0", base)
-    } else if dots == 0 {
-        format!("{}.0.0", base)
-    } else {
-        base.to_string()
-    };
-
-    format!("{}{}{}", core, pre, suffix)
-}
-
 impl PartialEq for CargoVersion {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq(&other.0)
@@ -175,8 +148,8 @@ impl FromStr for CargoVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        let normalized = normalize_version_string(s);
-        let v = Version::parse(&normalized).map_err(|e| {
+        // Strict canonical form parsing
+        let v = Version::parse(s).map_err(|e| {
             VersError::InvalidVersionFormat(CARGO_SCHEME.to_string(), s.to_string(), e.to_string())
         })?;
         Ok(CargoVersion(v))
@@ -187,7 +160,6 @@ impl FromStr for CargoVersion {
 mod tests {
     use super::*;
     use crate::DynamicVersionRange;
-    use crate::range::VersionRange;
 
     #[test]
     fn test_vers_cargo_explicit_equals_fails() {
@@ -199,12 +171,6 @@ mod tests {
     fn test_vers_cargo_implicit_equals_succeeds() {
         let result: Result<DynamicVersionRange, _> = "vers:cargo/1.2.3".parse();
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_cargo_percent_decoding() {
-        let constraint = CargoVersion::from_native_constraint(">=1.2.3").unwrap();
-        assert_eq!(constraint.version.0.major, 1);
     }
 
     #[test]
@@ -220,20 +186,28 @@ mod tests {
     }
 
     #[test]
-    fn lower_bound_version_range_should_contain_higher_prerelease_version() {
-        let target_version = CargoVersion::from_str("1.5.0-alpha").unwrap();
-        let lower_bound_version_range =
-            CargoVersion::from_native_string("cargo", ">=1.2.4").unwrap();
-        assert!(lower_bound_version_range.contains(target_version).unwrap());
+    fn test_cargo_native_partial_version_is_normalized() {
+        let result = CargoVersion::from_native(">=1.2")
+            .expect("Cargo-native parsing should accept partial versions");
+
+        assert_eq!(result[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(result[0].version.0.major, 1);
+        assert_eq!(result[0].version.0.minor, 2);
+        assert_eq!(result[0].version.0.patch, 0);
     }
 
     #[test]
-    fn test_cargo_explicit_prerelease_range_should_contain_same_patch() {
-        let range: DynamicVersionRange = "vers:cargo/>=1.0.0-alpha".parse().unwrap();
-        let should_be_true = range
-            .contains("1.0.0-beta".parse().unwrap())
-            .expect("contains should succeed");
-        assert!(should_be_true);
+    fn test_vers_cargo_uri_partial_version_is_rejected() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:cargo/>=1.2".parse();
+
+        result.expect_err("VERS Cargo URIs require a complete version");
+    }
+
+    #[test]
+    fn test_dynamic_native_cargo_partial_version_is_canonicalized() {
+        let range = DynamicVersionRange::parse_native("cargo", ">=1.2").unwrap();
+
+        assert_eq!(range.to_string(), "vers:cargo/>=1.2.0");
     }
 
     #[test]

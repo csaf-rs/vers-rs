@@ -520,8 +520,9 @@ mod tests {
     fn test_dynamic_serde_json_roundtrip() {
         for input in [
             "vers:npm/>=1.0.0|<2.0.0",
-            "vers:deb/>=1.0|<2.0",
-            "vers:cargo/>=1.0|<2.0",
+            // Debian version format requires a complete version including revision (e.g., 1.0-0)
+            "vers:deb/>=1.0-0",
+            "vers:cargo/>=1.0.0|<2.0.0",
         ] {
             let range: DynamicVersionRange = input.parse().unwrap();
             let json = serde_json::to_string(&range).unwrap();
