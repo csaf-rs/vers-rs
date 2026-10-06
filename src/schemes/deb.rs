@@ -31,30 +31,21 @@ impl NativeVersionConverter for DebVersion {
                 "Control characters are not permitted in native version ranges".to_string(),
             ));
         }
+
         let raw = raw.trim();
         if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        let clauses: Vec<&str> = if raw.contains('|') {
-            raw.split('|').collect()
-        } else if raw.contains(',') {
-            raw.split(',').collect()
-        } else {
-            vec![raw]
-        };
-
-        let mut constraints = Vec::new();
-        for clause in clauses {
-            let constraint = Self::from_native_constraint(clause.trim())?;
-            constraints.push(constraint);
+        if raw.contains('|') || raw.contains(',') {
+            return Err(VersError::InvalidConstraint(
+                "Debian native version constraints support exactly one version relation; \
+             '|' and ',' are package relationship separators"
+                    .to_string(),
+            ));
         }
 
-        if constraints.is_empty() {
-            return Err(VersError::EmptyConstraints);
-        }
-
-        Ok(constraints)
+        Ok(vec![Self::from_native_constraint(raw)?])
     }
 
     fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
@@ -232,10 +223,12 @@ mod tests {
     }
 
     #[test]
-    fn test_deb_parse_native_normalizes() {
-        let range = DynamicVersionRange::parse_native("deb", ">>1.0|>>2.0").unwrap();
-        assert_eq!(range.constraints().len(), 1);
-        assert_eq!(range.constraints()[0].comparator, Comparator::GreaterThan);
-        assert_eq!(range.constraints()[0].version.to_string(), "1.0");
+    fn test_deb_native_compound_constraints_rejected() {
+        for raw in [">>1.0|>>2.0", ">>1.0,>>2.0"] {
+            assert!(
+                DynamicVersionRange::parse_native("deb", raw).is_err(),
+                "Debian native input should reject {raw:?}",
+            );
+        }
     }
 }
