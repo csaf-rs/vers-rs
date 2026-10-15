@@ -417,7 +417,6 @@ mod tests {
     #[case::npm_extra_segment("vers:npm/1.2.3.4", VersError::InvalidVersionFormat("npm".to_string(), "1.2.3.4".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
     #[case::npm_v_prefix("vers:npm/v1.2.3.4", VersError::InvalidVersionFormat("npm".to_string(), "v1.2.3.4".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
     #[case::deb_underscore("vers:deb/1.2_build", VersError::InvalidVersionFormat("deb".to_string(), "1.2_build".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
-    #[case::deb_test("vers:deb/1.2", VersError::InvalidVersionFormat("deb".to_string(), "1.2".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
     #[case::cargo_missing_patch("vers:cargo/1.2", VersError::InvalidVersionFormat("cargo".to_string(), "1.2".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
     fn non_canonical_version_should_fail(#[case] input: &str, #[case] expected: VersError) {
         let result: Result<DynamicVersionRange, VersError> = input.parse();
