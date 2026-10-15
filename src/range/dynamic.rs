@@ -772,7 +772,7 @@ mod tests {
 
         assert!(
             DynamicVersionRange::DECL.contains(
-                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion>;"
+                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion>;"
             )
         );
     }
