@@ -574,7 +574,6 @@ where
             versioning_scheme,
             constraints,
         };
-        // range.normalize_and_validate()?;
 
         Ok(range)
     }
