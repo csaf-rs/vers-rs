@@ -30,7 +30,7 @@ use crate::error::VersError;
 use crate::range::VersionRange;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::collections::LinkedList;
+use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -268,7 +268,7 @@ impl<V: VersionType> VersVersionRange<V> {
 
         // Split constraints into unequal constraints and other constraints
         let mut unequal_constraints: Vec<VersionConstraint<V>> = Vec::new();
-        let mut other_constraints: LinkedList<VersionConstraint<V>> = LinkedList::new();
+        let mut other_constraints: VecDeque<VersionConstraint<V>> = VecDeque::new();
 
         for constraint in self.constraints.drain(..) {
             if constraint.comparator == NotEqual {
