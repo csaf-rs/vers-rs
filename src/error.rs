@@ -32,8 +32,8 @@ pub enum VersError {
     #[error("Invalid version constraint: {0}")]
     InvalidConstraint(String),
 
-    #[error("Duplicate version: {0}")]
-    DuplicateVersion(String),
+    #[error("Duplicate versions found: {0}")]
+    DuplicateVersions(String),
 
     #[error("Invalid version range: {0}")]
     InvalidRange(String),
@@ -60,8 +60,8 @@ pub enum VersError {
     #[error("Versions must be canonically ordered, but {0} is not less than {1}")]
     UnorderedVersions(String, String),
 
-    #[error("Version {0} contains unencoded operator: {1}")]
-    UnencodedOperator(String, String),
+    #[error("Version contains an unencoded operator: {0}")]
+    UnencodedOperator(String),
 
     #[error("Multiple asterisks in version range specifier: {0}")]
     MultipleAsterisks(String),

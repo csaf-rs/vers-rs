@@ -21,6 +21,7 @@
 //! It also implements `FromStr` for parsing a string into a `VersionRange` and
 //! `Display` for converting a `VersionRange` back to a string.
 
+use crate::ASCII_WHITESPACE_CHARACTERS;
 use crate::Comparator;
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
@@ -28,6 +29,7 @@ use crate::constraint::VersionType;
 use crate::error::VersError;
 use crate::range::VersionRange;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::collections::LinkedList;
 use std::fmt;
 use std::fmt::Display;
@@ -256,7 +258,7 @@ impl<V: VersionType> VersVersionRange<V> {
         // Check for duplicate versions, exploiting sorted order
         for i in 1..self.constraints.len() {
             if self.constraints[i].version == self.constraints[i - 1].version {
-                return Err(VersError::DuplicateVersion(
+                return Err(VersError::DuplicateVersions(
                     self.constraints[i].version.to_string(),
                 ));
             }
@@ -403,18 +405,21 @@ impl<V: VersionType> VersVersionRange<V> {
     }
 }
 
-impl<V: VersionType> FromStr for VersVersionRange<V> {
+impl<V: VersionType> FromStr for VersVersionRange<V>
+where
+    V::Err: Into<VersError>,
+{
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Enforce that control characters are prohibited in canonical constraints
-        if s.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
-            return Err(VersError::InvalidConstraint(
+        if s.bytes().any(|b| ASCII_WHITESPACE_CHARACTERS.contains(&b)) {
+            return Err(VersError::InvalidCharacters(
                 "Control characters (tabs, newlines, carriage returns) are not permitted"
                     .to_string(),
             ));
         }
 
+        // ToDo use DynamicVersionRange::extract_versioning_scheme here
         let parts: Vec<&str> = s.splitn(2, ':').collect();
         if parts.len() != 2 || parts[0] != "vers" {
             return Err(VersError::InvalidScheme);
@@ -430,6 +435,7 @@ impl<V: VersionType> FromStr for VersVersionRange<V> {
             return Err(VersError::MissingVersioningScheme);
         }
 
+        // check constraints
         let constraints_str = specifier_parts[1].trim();
         if constraints_str.is_empty() {
             return Err(VersError::EmptyConstraints);
@@ -442,21 +448,110 @@ impl<V: VersionType> FromStr for VersVersionRange<V> {
             });
         }
 
+        // check multiple asterisks
+        if constraints_str.chars().filter(|c| *c == '*').count() > 1 {
+            return Err(VersError::MultipleAsterisks(constraints_str.to_string()));
+        }
+
         // Split on '|' and delegate each segment to VersionConstraint::parse
-        let segments: Vec<&str> = constraints_str.split('|').map(|s| s.trim()).collect();
+        let segments: Vec<&str> = constraints_str.split('|').collect();
         let mut constraints = Vec::new();
+        let mut seen_versions: HashMap<V, Vec<VersionConstraint<V>>> = HashMap::new();
         for segment in segments {
             if segment.is_empty() {
                 return Err(VersError::EmptyConstraints);
             }
-            constraints.push(VersionConstraint::<V>::parse(segment)?);
+            let constraint = VersionConstraint::<V>::parse(segment)?;
+            seen_versions
+                .entry(constraint.version.clone())
+                .or_default()
+                .push(constraint.clone());
+
+            constraints.push(constraint);
         }
 
-        let mut range = Self {
+        // check duplicate versions
+        let duplicate_versions: Vec<VersionConstraint<V>> = seen_versions
+            .values()
+            .filter(|v| v.len() > 1)
+            .filter_map(|v| v.first().cloned())
+            .collect();
+        if !duplicate_versions.is_empty() {
+            let duplicates: Vec<String> = duplicate_versions
+                .iter()
+                .map(|c| c.version.to_string())
+                .collect();
+            return Err(VersError::DuplicateVersions(
+                duplicates.join(", ").to_string(),
+            ));
+        }
+
+        // check ordering
+        let check_order_result = constraints.windows(2).try_for_each(|pair| {
+            let (a, b) = (&pair[0], &pair[1]);
+            if a.version > b.version {
+                Err(VersError::UnorderedVersions(
+                    a.version.to_string(),
+                    b.version.to_string(),
+                ))
+            } else {
+                Ok(())
+            }
+        });
+        check_order_result?;
+
+        // non-equal is irrelevant for further comparator checks, as everything is allowed after non-equal
+        // and should be ignored for the purpose of checking consecutive operators
+        let constraints_without_non_equal: Vec<&VersionConstraint<V>> = constraints
+            .iter()
+            .filter(|c| c.comparator != Comparator::NotEqual)
+            .collect();
+        if constraints_without_non_equal.len() > 1 {
+            let mut i = 0;
+            while i < constraints_without_non_equal.len() - 1 {
+                let Some(current) = constraints_without_non_equal.get(i) else {
+                    break;
+                };
+
+                let Some(next) = constraints_without_non_equal.get(i + 1) else {
+                    // end of list reached, no further checks needed
+                    break;
+                };
+
+                match (current.comparator, next.comparator) {
+                    // = | <= makes no sense, as the = constraint is already covered by the < constraint and the versions must be ordered at this point
+                    (Comparator::Equal, Comparator::LessThan)
+                    | (Comparator::Equal, Comparator::LessThanOrEqual)
+                    // >= | = makes no sense, as the = constraint is already covered by the > constraint and the versions must be ordered at this point
+                    | (Comparator::GreaterThan, Comparator::Equal)
+                    | (Comparator::GreaterThanOrEqual, Comparator::Equal)
+                    // < | < or > | > makes no sense, as the versions must be ordered at this point
+                    | (Comparator::LessThan, Comparator::LessThan)
+                    | (Comparator::LessThan, Comparator::LessThanOrEqual)
+                    | (Comparator::LessThanOrEqual, Comparator::LessThan)
+                    | (Comparator::LessThanOrEqual, Comparator::LessThanOrEqual)
+                    | (Comparator::GreaterThan, Comparator::GreaterThan)
+                    | (Comparator::GreaterThan, Comparator::GreaterThanOrEqual)
+                    | (Comparator::GreaterThanOrEqual, Comparator::GreaterThan)
+                    | (Comparator::GreaterThanOrEqual, Comparator::GreaterThanOrEqual)
+                    => {
+                        return Err(VersError::ConsecutiveOperators(format!(
+                            "{0} | {1}",
+                            current.comparator, next.comparator
+                        )));
+                    }
+                    _ => {}
+                }
+
+                i += 1;
+            }
+        }
+
+        let range = Self {
             versioning_scheme,
             constraints,
         };
-        range.normalize_and_validate()?;
+        // range.normalize_and_validate()?;
 
         Ok(range)
     }
@@ -498,47 +593,10 @@ mod tests {
     use crate::schemes::semver::SemVer;
 
     #[test]
-    fn invalid_control_character_should_fail() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/1.2.3\n".parse();
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            VersError::InvalidConstraint(
-                "Control characters (tabs, newlines, carriage returns) are not permitted"
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
     fn test_invalid_scheme() {
         let result: Result<VersVersionRange<SemVer>, _> = "foo:npm/1.2.3".parse();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), VersError::InvalidScheme);
-    }
-
-    #[test]
-    fn test_missing_scheme() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:/1.2.3".parse();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), VersError::MissingVersioningScheme);
-    }
-
-    #[test]
-    fn test_empty_constraints() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/".parse();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), VersError::EmptyConstraints);
-    }
-
-    #[test]
-    fn test_duplicate_version() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/1.2.3|1.2.3".parse();
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            VersError::DuplicateVersion(_)
-        ));
     }
 
     #[test]

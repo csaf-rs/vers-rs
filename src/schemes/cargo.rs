@@ -12,6 +12,7 @@ use derive_more::Display;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 pub const CARGO_SCHEME: &str = "cargo";
@@ -126,6 +127,12 @@ fn normalize_version_token(token: &str) -> String {
 impl PartialEq for CargoVersion {
     fn eq(&self, other: &Self) -> bool {
         self.0.eq(&other.0)
+    }
+}
+
+impl Hash for CargoVersion {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 

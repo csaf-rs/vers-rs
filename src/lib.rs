@@ -13,6 +13,9 @@ pub use range::VersionRange;
 pub use range::dynamic::DynamicVersionRange;
 pub use range::vers::VersVersionRange;
 
+const ASCII_WHITESPACE_CHARACTERS: [u8; 4] = *b" \t\n\r";
+const ALLOWED_OPERATORS: [&str; 5] = [">", "<", "!=", "<=", ">="];
+
 #[cfg(feature = "wasm")]
 pub mod wasm;
 

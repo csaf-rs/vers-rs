@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 pub const SEMVER_SCHEME: &str = "semver/npm";
 
-#[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 // `Version` comes from the external `semver` crate and doesn't implement `Tsify`, so the
 // derive can't generate a meaningful TS type for it (it would emit an unresolved `Version`
