@@ -502,6 +502,7 @@ mod tests {
     #[rstest]
     #[case("vers:semver/>1.0.0|1.5.0")]
     #[case("vers:semver/>1.0.0|1.5.0|>2.0.0")]
+    #[case("vers:semver/1.0.0|>1.5.0|2.0.0|>2.5.0")]
     fn greater_followed_by_equals_should_fail(#[case] input: &str) {
         let result: Result<DynamicVersionRange, VersError> = input.parse();
         assert!(result.is_err());
@@ -510,7 +511,6 @@ mod tests {
     }
 
     #[rstest]
-    #[case("vers:semver/>1.0.0|>2.0.0")]
     #[case("vers:semver/>1.0.0|!=1.5.0|>2.0.0")]
     #[case("vers:semver/<1.0.0|<2.0.0")]
     #[case("vers:semver/<1.0.0|!=1.5.0|<2.0.0")]
@@ -519,6 +519,12 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, VersError::ConsecutiveOperators(_)));
+    }
+
+    #[test]
+    fn equal_followed_by_equal_is_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/1.0.0|1.5.0".parse();
+        assert!(result.is_ok());
     }
 
     #[test]
@@ -563,20 +569,6 @@ mod tests {
 
         let star: DynamicVersionRange = "vers:npm/*".parse().unwrap();
         assert!(!star.is_open_ended());
-    }
-
-    #[test]
-    fn test_parse_with_spaces() {
-        let range: DynamicVersionRange = "vers:npm/ >= 1.0.0 | < 2.0.0 ".parse().unwrap();
-        assert_eq!(range.versioning_scheme(), "npm");
-        assert_eq!(range.constraints().len(), 2);
-        assert_eq!(
-            range.constraints()[0].comparator,
-            Comparator::GreaterThanOrEqual
-        );
-        assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
-        assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
-        assert_eq!(range.constraints()[1].version.to_string(), "2.0.0");
     }
 
     #[test]

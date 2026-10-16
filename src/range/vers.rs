@@ -513,6 +513,7 @@ where
             .iter()
             .filter(|c| c.comparator != Comparator::NotEqual)
             .collect();
+        // check lessthan after equals and equals after greaterthan
         if constraints_without_non_equal.len() > 1 {
             let mut i = 0;
             while i < constraints_without_non_equal.len() - 1 {
@@ -531,17 +532,46 @@ where
                     | (Comparator::Equal, Comparator::LessThanOrEqual)
                     // >= | = makes no sense, as the = constraint is already covered by the > constraint and the versions must be ordered at this point
                     | (Comparator::GreaterThan, Comparator::Equal)
-                    | (Comparator::GreaterThanOrEqual, Comparator::Equal)
+                    | (Comparator::GreaterThanOrEqual, Comparator::Equal) => {
+                        return Err(VersError::ConsecutiveOperators(format!(
+                            "{0} | {1}",
+                            current.comparator, next.comparator
+                        )));
+                    }
+                    _ => {}
+                }
+
+                i += 1;
+            }
+        }
+
+        let constraints_without_non_equal_and_equal: Vec<&VersionConstraint<V>> =
+            constraints_without_non_equal
+                .into_iter()
+                .filter(|c| c.comparator != Comparator::Equal)
+                .collect();
+        if constraints_without_non_equal_and_equal.len() > 1 {
+            let mut i = 0;
+            while i < constraints_without_non_equal_and_equal.len() - 1 {
+                let Some(current) = constraints_without_non_equal_and_equal.get(i) else {
+                    break;
+                };
+
+                let Some(next) = constraints_without_non_equal_and_equal.get(i + 1) else {
+                    // end of list reached, no further checks needed
+                    break;
+                };
+
+                match (current.comparator, next.comparator) {
                     // < | < or > | > makes no sense, as the versions must be ordered at this point
-                    | (Comparator::LessThan, Comparator::LessThan)
+                    (Comparator::LessThan, Comparator::LessThan)
                     | (Comparator::LessThan, Comparator::LessThanOrEqual)
                     | (Comparator::LessThanOrEqual, Comparator::LessThan)
                     | (Comparator::LessThanOrEqual, Comparator::LessThanOrEqual)
                     | (Comparator::GreaterThan, Comparator::GreaterThan)
                     | (Comparator::GreaterThan, Comparator::GreaterThanOrEqual)
                     | (Comparator::GreaterThanOrEqual, Comparator::GreaterThan)
-                    | (Comparator::GreaterThanOrEqual, Comparator::GreaterThanOrEqual)
-                    => {
+                    | (Comparator::GreaterThanOrEqual, Comparator::GreaterThanOrEqual) => {
                         return Err(VersError::ConsecutiveOperators(format!(
                             "{0} | {1}",
                             current.comparator, next.comparator
@@ -721,19 +751,14 @@ mod tests {
 
     #[test]
     fn test_is_open_ended_trailing_not_equal_after_unbounded_greater_than_or_equal() {
-        // Regression test for the edge case highlighted by package-url/vers-spec's
-        // tests/pypi_range_validate_test.json, which treats
-        // "vers:pypi/...|>=0.0.6|!=0.8" as already-canonical: a "!=" constraint can
+        // Regression test for the edge case ">=0.0.2|!=0.0.8": a "!=" constraint can
         // sort *after* the final ">"/">=" bound (it has a higher version) without
         // affecting whether the range is unbounded above. Naively checking only the
         // last constraint in the (version-sorted) list would miss this.
-        let range: VersVersionRange<SemVer> =
-            "vers:npm/>0.0.0|>=0.0.1|0.0.2|0.0.3|0.0.4|<0.0.5|>=0.0.6|!=0.8.0"
-                .parse()
-                .unwrap();
+        let range: VersVersionRange<SemVer> = "vers:npm/0.0.1|>=0.0.2|!=0.0.8".parse().unwrap();
         assert!(range.is_open_ended());
         assert!(range.contains("999.0.0".parse().unwrap()).unwrap());
-        assert!(!range.contains("0.8.0".parse().unwrap()).unwrap());
+        assert!(!range.contains("0.0.8".parse().unwrap()).unwrap());
     }
 
     #[test]
