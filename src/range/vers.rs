@@ -514,34 +514,21 @@ where
             .filter(|c| c.comparator != Comparator::NotEqual)
             .collect();
         // check lessthan after equals and equals after greaterthan
-        if constraints_without_non_equal.len() > 1 {
-            let mut i = 0;
-            while i < constraints_without_non_equal.len() - 1 {
-                let Some(current) = constraints_without_non_equal.get(i) else {
-                    break;
-                };
-
-                let Some(next) = constraints_without_non_equal.get(i + 1) else {
-                    // end of list reached, no further checks needed
-                    break;
-                };
-
-                match (current.comparator, next.comparator) {
-                    // = | <= makes no sense, as the = constraint is already covered by the < constraint and the versions must be ordered at this point
-                    (Comparator::Equal, Comparator::LessThan)
-                    | (Comparator::Equal, Comparator::LessThanOrEqual)
-                    // >= | = makes no sense, as the = constraint is already covered by the > constraint and the versions must be ordered at this point
-                    | (Comparator::GreaterThan, Comparator::Equal)
-                    | (Comparator::GreaterThanOrEqual, Comparator::Equal) => {
-                        return Err(VersError::ConsecutiveOperators(format!(
-                            "{0} | {1}",
-                            current.comparator, next.comparator
-                        )));
-                    }
-                    _ => {}
+        for pair in constraints_without_non_equal.windows(2) {
+            let (current, next) = (pair[0], pair[1]);
+            match (current.comparator, next.comparator) {
+                // = | <= makes no sense, as the = constraint is already covered by the < constraint and the versions must be ordered at this point
+                (Comparator::Equal, Comparator::LessThan)
+                | (Comparator::Equal, Comparator::LessThanOrEqual)
+                // >= | = makes no sense, as the = constraint is already covered by the > constraint and the versions must be ordered at this point
+                | (Comparator::GreaterThan, Comparator::Equal)
+                | (Comparator::GreaterThanOrEqual, Comparator::Equal) => {
+                    return Err(VersError::ConsecutiveOperators(format!(
+                        "{0} | {1}",
+                        current.comparator, next.comparator
+                    )));
                 }
-
-                i += 1;
+                _ => {}
             }
         }
 
@@ -550,37 +537,24 @@ where
                 .into_iter()
                 .filter(|c| c.comparator != Comparator::Equal)
                 .collect();
-        if constraints_without_non_equal_and_equal.len() > 1 {
-            let mut i = 0;
-            while i < constraints_without_non_equal_and_equal.len() - 1 {
-                let Some(current) = constraints_without_non_equal_and_equal.get(i) else {
-                    break;
-                };
-
-                let Some(next) = constraints_without_non_equal_and_equal.get(i + 1) else {
-                    // end of list reached, no further checks needed
-                    break;
-                };
-
-                match (current.comparator, next.comparator) {
-                    // < | < or > | > makes no sense, as the versions must be ordered at this point
-                    (Comparator::LessThan, Comparator::LessThan)
-                    | (Comparator::LessThan, Comparator::LessThanOrEqual)
-                    | (Comparator::LessThanOrEqual, Comparator::LessThan)
-                    | (Comparator::LessThanOrEqual, Comparator::LessThanOrEqual)
-                    | (Comparator::GreaterThan, Comparator::GreaterThan)
-                    | (Comparator::GreaterThan, Comparator::GreaterThanOrEqual)
-                    | (Comparator::GreaterThanOrEqual, Comparator::GreaterThan)
-                    | (Comparator::GreaterThanOrEqual, Comparator::GreaterThanOrEqual) => {
-                        return Err(VersError::ConsecutiveOperators(format!(
-                            "{0} | {1}",
-                            current.comparator, next.comparator
-                        )));
-                    }
-                    _ => {}
+        for pair in constraints_without_non_equal_and_equal.windows(2) {
+            let (current, next) = (pair[0], pair[1]);
+            match (current.comparator, next.comparator) {
+                // < | < or > | > makes no sense, as the versions must be ordered at this point
+                (Comparator::LessThan, Comparator::LessThan)
+                | (Comparator::LessThan, Comparator::LessThanOrEqual)
+                | (Comparator::LessThanOrEqual, Comparator::LessThan)
+                | (Comparator::LessThanOrEqual, Comparator::LessThanOrEqual)
+                | (Comparator::GreaterThan, Comparator::GreaterThan)
+                | (Comparator::GreaterThan, Comparator::GreaterThanOrEqual)
+                | (Comparator::GreaterThanOrEqual, Comparator::GreaterThan)
+                | (Comparator::GreaterThanOrEqual, Comparator::GreaterThanOrEqual) => {
+                    return Err(VersError::ConsecutiveOperators(format!(
+                        "{0} | {1}",
+                        current.comparator, next.comparator
+                    )));
                 }
-
-                i += 1;
+                _ => {}
             }
         }
 
