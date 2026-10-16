@@ -405,6 +405,26 @@ impl<V: VersionType> VersVersionRange<V> {
     }
 }
 
+/// Returns an error if any pair of comparators adjacent in `constraints` (already
+/// filtered/ordered by version) matches `is_invalid`. Used to reject comparator
+/// sequences that are redundant or nonsensical once irrelevant comparators
+/// (e.g. "!=", "=") have been filtered out.
+fn reject_adjacent_comparators<V: VersionType>(
+    constraints: &[&VersionConstraint<V>],
+    is_invalid: impl Fn(Comparator, Comparator) -> bool,
+) -> Result<(), VersError> {
+    for pair in constraints.windows(2) {
+        let (current, next) = (pair[0], pair[1]);
+        if is_invalid(current.comparator, next.comparator) {
+            return Err(VersError::ConsecutiveOperators(format!(
+                "{0} | {1}",
+                current.comparator, next.comparator
+            )));
+        }
+    }
+    Ok(())
+}
+
 impl<V: VersionType> FromStr for VersVersionRange<V>
 where
     V::Err: Into<VersError>,
@@ -514,49 +534,41 @@ where
             .filter(|c| c.comparator != Comparator::NotEqual)
             .collect();
         // check lessthan after equals and equals after greaterthan
-        for pair in constraints_without_non_equal.windows(2) {
-            let (current, next) = (pair[0], pair[1]);
-            match (current.comparator, next.comparator) {
+        reject_adjacent_comparators(&constraints_without_non_equal, |current, next| {
+            matches!(
+                (current, next),
                 // = | <= makes no sense, as the = constraint is already covered by the < constraint and the versions must be ordered at this point
                 (Comparator::Equal, Comparator::LessThan)
                 | (Comparator::Equal, Comparator::LessThanOrEqual)
                 // >= | = makes no sense, as the = constraint is already covered by the > constraint and the versions must be ordered at this point
                 | (Comparator::GreaterThan, Comparator::Equal)
-                | (Comparator::GreaterThanOrEqual, Comparator::Equal) => {
-                    return Err(VersError::ConsecutiveOperators(format!(
-                        "{0} | {1}",
-                        current.comparator, next.comparator
-                    )));
-                }
-                _ => {}
-            }
-        }
+                | (Comparator::GreaterThanOrEqual, Comparator::Equal)
+            )
+        })?;
 
         let constraints_without_non_equal_and_equal: Vec<&VersionConstraint<V>> =
             constraints_without_non_equal
                 .into_iter()
                 .filter(|c| c.comparator != Comparator::Equal)
                 .collect();
-        for pair in constraints_without_non_equal_and_equal.windows(2) {
-            let (current, next) = (pair[0], pair[1]);
-            match (current.comparator, next.comparator) {
+        // check for redundant consecutive "<"/"<=" or ">"/">=" constraints
+        reject_adjacent_comparators(&constraints_without_non_equal_and_equal, |current, next| {
+            matches!(
+                (current, next),
                 // < | < or > | > makes no sense, as the versions must be ordered at this point
                 (Comparator::LessThan, Comparator::LessThan)
-                | (Comparator::LessThan, Comparator::LessThanOrEqual)
-                | (Comparator::LessThanOrEqual, Comparator::LessThan)
-                | (Comparator::LessThanOrEqual, Comparator::LessThanOrEqual)
-                | (Comparator::GreaterThan, Comparator::GreaterThan)
-                | (Comparator::GreaterThan, Comparator::GreaterThanOrEqual)
-                | (Comparator::GreaterThanOrEqual, Comparator::GreaterThan)
-                | (Comparator::GreaterThanOrEqual, Comparator::GreaterThanOrEqual) => {
-                    return Err(VersError::ConsecutiveOperators(format!(
-                        "{0} | {1}",
-                        current.comparator, next.comparator
-                    )));
-                }
-                _ => {}
-            }
-        }
+                    | (Comparator::LessThan, Comparator::LessThanOrEqual)
+                    | (Comparator::LessThanOrEqual, Comparator::LessThan)
+                    | (Comparator::LessThanOrEqual, Comparator::LessThanOrEqual)
+                    | (Comparator::GreaterThan, Comparator::GreaterThan)
+                    | (Comparator::GreaterThan, Comparator::GreaterThanOrEqual)
+                    | (Comparator::GreaterThanOrEqual, Comparator::GreaterThan)
+                    | (
+                        Comparator::GreaterThanOrEqual,
+                        Comparator::GreaterThanOrEqual
+                    )
+            )
+        })?;
 
         let range = Self {
             versioning_scheme,
