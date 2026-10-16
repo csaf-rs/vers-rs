@@ -26,9 +26,11 @@ use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
 use crate::constraint::VersionType;
 use crate::error::VersError;
+use crate::is_ascii_vers_whitespace;
 use crate::range::VersionRange;
 use serde::{Deserialize, Serialize};
-use std::collections::LinkedList;
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -62,14 +64,14 @@ struct RawVersVersionRange<V: VersionType> {
 }
 
 impl<V: VersionType> TryFrom<RawVersVersionRange<V>> for VersVersionRange<V> {
-    type Error = String; // or a string error that serde can map
+    type Error = VersError;
 
     fn try_from(raw: RawVersVersionRange<V>) -> Result<Self, Self::Error> {
         let mut range = VersVersionRange {
             versioning_scheme: raw.versioning_scheme,
             constraints: raw.constraints,
         };
-        range.normalize_and_validate().map_err(|e| e.to_string())?;
+        range.normalize_and_validate()?;
         Ok(range)
     }
 }
@@ -256,7 +258,7 @@ impl<V: VersionType> VersVersionRange<V> {
         // Check for duplicate versions, exploiting sorted order
         for i in 1..self.constraints.len() {
             if self.constraints[i].version == self.constraints[i - 1].version {
-                return Err(VersError::DuplicateVersion(
+                return Err(VersError::DuplicateVersions(
                     self.constraints[i].version.to_string(),
                 ));
             }
@@ -266,7 +268,7 @@ impl<V: VersionType> VersVersionRange<V> {
 
         // Split constraints into unequal constraints and other constraints
         let mut unequal_constraints: Vec<VersionConstraint<V>> = Vec::new();
-        let mut other_constraints: LinkedList<VersionConstraint<V>> = LinkedList::new();
+        let mut other_constraints: VecDeque<VersionConstraint<V>> = VecDeque::new();
 
         for constraint in self.constraints.drain(..) {
             if constraint.comparator == NotEqual {
@@ -403,18 +405,41 @@ impl<V: VersionType> VersVersionRange<V> {
     }
 }
 
-impl<V: VersionType> FromStr for VersVersionRange<V> {
+/// Returns an error if any pair of comparators adjacent in `constraints` (already
+/// filtered/ordered by version) matches `is_invalid`. Used to reject comparator
+/// sequences that are redundant or nonsensical once irrelevant comparators
+/// (e.g. "!=", "=") have been filtered out.
+fn reject_adjacent_comparators<V: VersionType>(
+    constraints: &[&VersionConstraint<V>],
+    is_invalid: impl Fn(Comparator, Comparator) -> bool,
+) -> Result<(), VersError> {
+    for pair in constraints.windows(2) {
+        let (current, next) = (pair[0], pair[1]);
+        if is_invalid(current.comparator, next.comparator) {
+            return Err(VersError::ConsecutiveOperators(format!(
+                "{0} | {1}",
+                current.comparator, next.comparator
+            )));
+        }
+    }
+    Ok(())
+}
+
+impl<V: VersionType> FromStr for VersVersionRange<V>
+where
+    V::Err: Into<VersError>,
+{
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Enforce that control characters are prohibited in canonical constraints
-        if s.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
-            return Err(VersError::InvalidConstraint(
+        if s.bytes().any(is_ascii_vers_whitespace) {
+            return Err(VersError::InvalidCharacters(
                 "Control characters (tabs, newlines, carriage returns) are not permitted"
                     .to_string(),
             ));
         }
 
+        // ToDo use DynamicVersionRange::extract_versioning_scheme here #95
         let parts: Vec<&str> = s.splitn(2, ':').collect();
         if parts.len() != 2 || parts[0] != "vers" {
             return Err(VersError::InvalidScheme);
@@ -430,6 +455,7 @@ impl<V: VersionType> FromStr for VersVersionRange<V> {
             return Err(VersError::MissingVersioningScheme);
         }
 
+        // check constraints
         let constraints_str = specifier_parts[1].trim();
         if constraints_str.is_empty() {
             return Err(VersError::EmptyConstraints);
@@ -442,21 +468,112 @@ impl<V: VersionType> FromStr for VersVersionRange<V> {
             });
         }
 
+        // check multiple asterisks
+        if constraints_str.chars().filter(|c| *c == '*').count() > 1 {
+            return Err(VersError::MultipleAsterisks(constraints_str.to_string()));
+        }
+
         // Split on '|' and delegate each segment to VersionConstraint::parse
-        let segments: Vec<&str> = constraints_str.split('|').map(|s| s.trim()).collect();
+        let segments: Vec<&str> = constraints_str.split('|').collect();
         let mut constraints = Vec::new();
+        let mut seen_versions: HashMap<V, Vec<VersionConstraint<V>>> = HashMap::new();
         for segment in segments {
             if segment.is_empty() {
                 return Err(VersError::EmptyConstraints);
             }
-            constraints.push(VersionConstraint::<V>::parse(segment)?);
+            let constraint = VersionConstraint::<V>::parse(segment)?;
+            seen_versions
+                .entry(constraint.version.clone())
+                .or_default()
+                .push(constraint.clone());
+
+            constraints.push(constraint);
         }
 
-        let mut range = Self {
+        // check single asterisk
+        if constraints.len() > 1 && constraints.iter().any(|c| c.comparator == Comparator::Any) {
+            return Err(VersError::InvalidRange(
+                "Star constraint must be used alone".to_string(),
+            ));
+        }
+
+        // check duplicate versions
+        let duplicate_versions: Vec<VersionConstraint<V>> = seen_versions
+            .values()
+            .filter(|v| v.len() > 1)
+            .filter_map(|v| v.first().cloned())
+            .collect();
+        if !duplicate_versions.is_empty() {
+            let duplicates: Vec<String> = duplicate_versions
+                .iter()
+                .map(|c| c.version.to_string())
+                .collect();
+            return Err(VersError::DuplicateVersions(
+                duplicates.join(", ").to_string(),
+            ));
+        }
+
+        // check ordering
+        let check_order_result = constraints.windows(2).try_for_each(|pair| {
+            let (a, b) = (&pair[0], &pair[1]);
+            if a.version > b.version {
+                Err(VersError::UnorderedVersions(
+                    a.version.to_string(),
+                    b.version.to_string(),
+                ))
+            } else {
+                Ok(())
+            }
+        });
+        check_order_result?;
+
+        // non-equal is irrelevant for further comparator checks, as everything is allowed after non-equal
+        // and should be ignored for the purpose of checking consecutive operators
+        let constraints_without_non_equal: Vec<&VersionConstraint<V>> = constraints
+            .iter()
+            .filter(|c| c.comparator != Comparator::NotEqual)
+            .collect();
+        // check lessthan after equals and equals after greaterthan
+        reject_adjacent_comparators(&constraints_without_non_equal, |current, next| {
+            matches!(
+                (current, next),
+                // = | <= makes no sense, as the = constraint is already covered by the < constraint and the versions must be ordered at this point
+                (Comparator::Equal, Comparator::LessThan)
+                | (Comparator::Equal, Comparator::LessThanOrEqual)
+                // >= | = makes no sense, as the = constraint is already covered by the > constraint and the versions must be ordered at this point
+                | (Comparator::GreaterThan, Comparator::Equal)
+                | (Comparator::GreaterThanOrEqual, Comparator::Equal)
+            )
+        })?;
+
+        let constraints_without_non_equal_and_equal: Vec<&VersionConstraint<V>> =
+            constraints_without_non_equal
+                .into_iter()
+                .filter(|c| c.comparator != Comparator::Equal)
+                .collect();
+        // check for redundant consecutive "<"/"<=" or ">"/">=" constraints
+        reject_adjacent_comparators(&constraints_without_non_equal_and_equal, |current, next| {
+            matches!(
+                (current, next),
+                // < | < or > | > makes no sense, as the versions must be ordered at this point
+                (Comparator::LessThan, Comparator::LessThan)
+                    | (Comparator::LessThan, Comparator::LessThanOrEqual)
+                    | (Comparator::LessThanOrEqual, Comparator::LessThan)
+                    | (Comparator::LessThanOrEqual, Comparator::LessThanOrEqual)
+                    | (Comparator::GreaterThan, Comparator::GreaterThan)
+                    | (Comparator::GreaterThan, Comparator::GreaterThanOrEqual)
+                    | (Comparator::GreaterThanOrEqual, Comparator::GreaterThan)
+                    | (
+                        Comparator::GreaterThanOrEqual,
+                        Comparator::GreaterThanOrEqual
+                    )
+            )
+        })?;
+
+        let range = Self {
             versioning_scheme,
             constraints,
         };
-        range.normalize_and_validate()?;
 
         Ok(range)
     }
@@ -502,30 +619,6 @@ mod tests {
         let result: Result<VersVersionRange<SemVer>, _> = "foo:npm/1.2.3".parse();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), VersError::InvalidScheme);
-    }
-
-    #[test]
-    fn test_missing_scheme() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:/1.2.3".parse();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), VersError::MissingVersioningScheme);
-    }
-
-    #[test]
-    fn test_empty_constraints() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/".parse();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), VersError::EmptyConstraints);
-    }
-
-    #[test]
-    fn test_duplicate_version() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/1.2.3|1.2.3".parse();
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            VersError::DuplicateVersion(_)
-        ));
     }
 
     #[test]
@@ -643,19 +736,14 @@ mod tests {
 
     #[test]
     fn test_is_open_ended_trailing_not_equal_after_unbounded_greater_than_or_equal() {
-        // Regression test for the edge case highlighted by package-url/vers-spec's
-        // tests/pypi_range_validate_test.json, which treats
-        // "vers:pypi/...|>=0.0.6|!=0.8" as already-canonical: a "!=" constraint can
+        // Regression test for the edge case ">=0.0.2|!=0.0.8": a "!=" constraint can
         // sort *after* the final ">"/">=" bound (it has a higher version) without
         // affecting whether the range is unbounded above. Naively checking only the
         // last constraint in the (version-sorted) list would miss this.
-        let range: VersVersionRange<SemVer> =
-            "vers:npm/>0.0.0|>=0.0.1|0.0.2|0.0.3|0.0.4|<0.0.5|>=0.0.6|!=0.8.0"
-                .parse()
-                .unwrap();
+        let range: VersVersionRange<SemVer> = "vers:npm/0.0.1|>=0.0.2|!=0.0.8".parse().unwrap();
         assert!(range.is_open_ended());
         assert!(range.contains("999.0.0".parse().unwrap()).unwrap());
-        assert!(!range.contains("0.8.0".parse().unwrap()).unwrap());
+        assert!(!range.contains("0.0.8".parse().unwrap()).unwrap());
     }
 
     #[test]

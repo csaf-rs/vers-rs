@@ -17,6 +17,9 @@ use {js_sys::Error as JsError, tsify::Tsify, wasm_bindgen::JsValue};
 #[derive(Error, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(Tsify))]
 pub enum VersError {
+    #[error("Invalid characters in version range specifier: {0}")]
+    InvalidCharacters(String),
+
     #[error("Invalid URI scheme, expected 'vers'")]
     InvalidScheme,
 
@@ -29,8 +32,8 @@ pub enum VersError {
     #[error("Invalid version constraint: {0}")]
     InvalidConstraint(String),
 
-    #[error("Duplicate version: {0}")]
-    DuplicateVersion(String),
+    #[error("Duplicate versions found: {0}")]
+    DuplicateVersions(String),
 
     #[error("Invalid version range: {0}")]
     InvalidRange(String),
@@ -48,8 +51,23 @@ pub enum VersError {
     #[error("Unsupported versioning scheme: {0}")]
     UnsupportedVersioningScheme(String),
 
+    #[error("Missing version in constraint")]
+    MissingVersionInConstraint,
+
     #[error("Invalid version format for scheme {0}: {1}, error was: {2}")]
     InvalidVersionFormat(String, String, String),
+
+    #[error("Versions must be canonically ordered, but {0} is not less than {1}")]
+    UnorderedVersions(String, String),
+
+    #[error("Version contains an unencoded operator: {0}")]
+    UnencodedOperator(String),
+
+    #[error("Multiple asterisks in version range specifier: {0}")]
+    MultipleAsterisks(String),
+
+    #[error("Unallowed consecutive operator sequence found in version range specifier: {0}")]
+    ConsecutiveOperators(String),
 
     /// A value could not be (de)serialized across the wasm ABI boundary.
     #[cfg(feature = "wasm")]

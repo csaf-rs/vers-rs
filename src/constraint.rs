@@ -7,11 +7,12 @@
 //! and a version string. It defines a condition that a version must satisfy to be
 //! considered within a version range.
 
-use crate::VersVersionRange;
+use crate::{ALLOWED_OPERATORS, VersVersionRange};
 use crate::{Comparator, VersError};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::hash::Hash;
 use std::str::FromStr;
 
 /// Trait for version types that support native (scheme-specific) syntax.
@@ -29,7 +30,10 @@ use std::str::FromStr;
 /// The default `from_native` splits on `|` and delegates to `from_native_constraint`
 /// for each segment. Schemes with entirely different range syntax can override
 /// `from_native` directly.
-pub trait NativeVersionConverter: VersionType {
+pub trait NativeVersionConverter: VersionType
+where
+    Self::Err: Into<VersError>,
+{
     /// The vers scheme identifier for this version type (e.g. `"deb"`, `"semver"`).
     const SCHEME_NAME: &'static str;
 
@@ -92,13 +96,13 @@ pub trait NativeVersionConverter: VersionType {
 
 /// A trait alias for version types that can be used in version constraints and ranges.
 pub trait VersionType:
-    FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize
+    FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize + Hash
 {
 }
 
 /// Blanket implementation for any type that satisfies the bounds
 impl<T> VersionType for T where
-    T: FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize
+    T: FromStr + Default + Ord + PartialOrd + Clone + Display + Debug + Serialize + Hash
 {
 }
 
@@ -165,7 +169,10 @@ impl<V: VersionType> VersionConstraint<V> {
     /// assert_eq!(constraint.comparator.to_string(), ">=");
     /// assert_eq!(constraint.version, "1.0.0".parse().unwrap());
     /// ```
-    pub fn parse(constraint_str: &str) -> Result<Self, VersError> {
+    pub fn parse(constraint_str: &str) -> Result<Self, VersError>
+    where
+        V::Err: Into<VersError>,
+    {
         if constraint_str.is_empty() {
             return Err(VersError::InvalidConstraint("Empty constraint".to_string()));
         }
@@ -201,9 +208,12 @@ impl<V: VersionType> VersionConstraint<V> {
             )));
         }
 
-        let version = version.trim();
         if version.is_empty() && comparator != Comparator::Any {
             return Err(VersError::InvalidConstraint("Missing version".to_string()));
+        }
+
+        if ALLOWED_OPERATORS.iter().any(|op| version.contains(op)) {
+            return Err(VersError::UnencodedOperator(version.to_string()));
         }
 
         // Handle URL percent encoding if needed
@@ -221,9 +231,7 @@ impl<V: VersionType> VersionConstraint<V> {
             version.to_string()
         };
 
-        let parsed_version = version_str.parse::<V>().map_err(|_| {
-            VersError::InvalidConstraint(format!("Failed to parse version: {}", version_str))
-        })?;
+        let parsed_version = version_str.parse::<V>().map_err(|e| e.into())?;
 
         Ok(Self {
             comparator,

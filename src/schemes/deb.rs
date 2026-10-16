@@ -6,6 +6,7 @@ use debversion::Version as DebVersionInner;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 /// Scheme identifier string for Debian versions
@@ -102,6 +103,12 @@ impl FromStr for DebVersion {
 impl PartialEq for DebVersion {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
+    }
+}
+
+impl Hash for DebVersion {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
