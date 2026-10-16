@@ -70,6 +70,63 @@ pub fn contains(range: &DynamicVersionRange, version_str: String) -> Result<bool
     range.contains(version_str)
 }
 
+/// Determine if a parsed vers string only consists of a single version.
+///
+/// A vers string is a single version when it has exactly one constraint using
+/// the implicit equality comparator (e.g. `vers:npm/1.2.3`). Strings using `*`,
+/// `!=`, or any comparison operator (even just one, e.g. `vers:npm/>=1.0.0`)
+/// are not single versions, since they match more than one version.
+///
+/// # Arguments
+///
+/// * `s` - The version range specifier string to parse and check
+///
+/// # Returns
+///
+/// A `Result` containing a boolean indicating whether the string is a single version
+///
+/// # Examples
+///
+/// ```
+/// use vers_rs::is_single_version;
+///
+/// assert!(is_single_version("vers:npm/1.2.3").unwrap());
+/// assert!(!is_single_version("vers:npm/>=1.0.0|<2.0.0").unwrap());
+/// assert!(!is_single_version("vers:npm/>=1.0.0").unwrap());
+/// ```
+pub fn is_single_version(s: &str) -> Result<bool, VersError> {
+    Ok(parse(s)?.is_single_version())
+}
+
+/// Retrieve the single version of a parsed vers string, if there is one.
+///
+/// Returns `Some` with the version string when the range has exactly one
+/// constraint using the implicit equality comparator (e.g. `vers:npm/1.2.3`).
+/// Returns `None` for ranges using `*`, `!=`, or any comparison operator (even
+/// just one, e.g. `vers:npm/>=1.0.0`), since those match more than one version.
+///
+/// # Arguments
+///
+/// * `s` - The version range specifier string to parse and check
+///
+/// # Returns
+///
+/// A `Result` containing `Some(version)` if the string is a single version, or `None` otherwise
+///
+/// # Examples
+///
+/// ```
+/// use vers_rs::single_version;
+///
+/// assert_eq!(single_version("vers:npm/1.2.3").unwrap(), Some("1.2.3".to_string()));
+/// assert_eq!(single_version("vers:npm/>=1.0.0|<2.0.0").unwrap(), None);
+/// assert_eq!(single_version("vers:npm/>=1.0.0").unwrap(), None);
+/// ```
+pub fn single_version(s: &str) -> Result<Option<String>, VersError> {
+    let range = parse(s)?;
+    Ok(range.single_version().cloned())
+}
+
 /// Parse a native range string for the given versioning scheme into a `DynamicVersionRange`.
 ///
 /// This function accepts a scheme name and a native range string directly, without
