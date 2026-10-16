@@ -16,6 +16,18 @@ pub trait VersionRange<V: VersionType> {
     fn is_single_version(&self) -> bool {
         matches!(self.constraints().as_slice(), [c] if c.comparator == Comparator::Equal)
     }
+
+    /// Retrieve the single version of this range, if there is one.
+    ///
+    /// Returns `Some` with the version when [`Self::is_single_version`] holds,
+    /// i.e. the range has exactly one constraint using the implicit equality
+    /// comparator (e.g. `vers:npm/1.2.3`). Returns `None` otherwise.
+    fn single_version(&self) -> Option<&V> {
+        match self.constraints().as_slice() {
+            [c] if c.comparator == Comparator::Equal => Some(&c.version),
+            _ => None,
+        }
+    }
 }
 
 pub mod dynamic;
