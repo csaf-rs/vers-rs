@@ -470,6 +470,13 @@ where
             constraints.push(constraint);
         }
 
+        // check single asterisk
+        if constraints.len() > 1 && constraints.iter().any(|c| c.comparator == Comparator::Any) {
+            return Err(VersError::InvalidRange(
+                "Star constraint must be used alone".to_string(),
+            ));
+        }
+
         // check duplicate versions
         let duplicate_versions: Vec<VersionConstraint<V>> = seen_versions
             .values()
