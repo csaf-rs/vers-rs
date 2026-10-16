@@ -64,14 +64,14 @@ struct RawVersVersionRange<V: VersionType> {
 }
 
 impl<V: VersionType> TryFrom<RawVersVersionRange<V>> for VersVersionRange<V> {
-    type Error = String; // or a string error that serde can map
+    type Error = VersError;
 
     fn try_from(raw: RawVersVersionRange<V>) -> Result<Self, Self::Error> {
         let mut range = VersVersionRange {
             versioning_scheme: raw.versioning_scheme,
             constraints: raw.constraints,
         };
-        range.normalize_and_validate().map_err(|e| e.to_string())?;
+        range.normalize_and_validate()?;
         Ok(range)
     }
 }
