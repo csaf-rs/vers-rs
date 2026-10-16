@@ -175,7 +175,7 @@ impl DynamicVersionRange {
         }
 
         // Get versioning scheme
-        let versioning_scheme = specifier_parts[0].to_lowercase();
+        let versioning_scheme = specifier_parts[0].to_string();
         if versioning_scheme.is_empty() {
             return Err(VersError::MissingVersioningScheme);
         }
@@ -414,6 +414,8 @@ mod tests {
     }
 
     #[rstest]
+    #[case::invalid_uppercase_scheme("Vers:semver/*", VersError::InvalidScheme)]
+    #[case::invalid_uppercase_type("vers:Semver/*", VersError::UnknownVersioningScheme("Unknown versioning scheme: Semver".to_string()))]
     #[case::semver_missing_patch("vers:semver/1.2", VersError::InvalidVersionFormat("semver".to_string(), "1.2".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
     #[case::semver_leading_zeroes("vers:semver/01.02", VersError::InvalidVersionFormat("semver".to_string(), "01.02".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
     #[case::semver_empty_prerelease("vers:semver/1.2-", VersError::InvalidVersionFormat("semver".to_string(), "1.2-".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
