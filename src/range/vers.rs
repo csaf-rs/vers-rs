@@ -498,6 +498,19 @@ mod tests {
     use crate::schemes::semver::SemVer;
 
     #[test]
+    fn invalid_control_character_should_fail() {
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/1.2.3\n".parse();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            VersError::InvalidConstraint(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
     fn test_invalid_scheme() {
         let result: Result<VersVersionRange<SemVer>, _> = "foo:npm/1.2.3".parse();
         assert!(result.is_err());

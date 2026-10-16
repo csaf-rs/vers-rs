@@ -207,16 +207,3 @@ pub fn single_version(s: &str) -> Result<Option<String>, VersError> {
 pub fn parse_native(scheme: &str, raw: &str) -> Result<DynamicVersionRange, VersError> {
     DynamicVersionRange::parse_native(scheme, raw)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::range::VersionRange;
-
-    #[test]
-    fn test_parse_dynamic_function() {
-        let range = parse("vers:npm/>=1.0.0|<2.0.0").unwrap();
-        assert_eq!(range.versioning_scheme(), "npm");
-        assert_eq!(range.constraints().len(), 2);
-    }
-}

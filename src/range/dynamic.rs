@@ -269,6 +269,8 @@ impl VersionRange<String> for DynamicVersionRange {
     }
 }
 
+const ASCII_WHITESPACE_CHARACTERS: [u8; 4] = [b' ', b'\t', b'\n', b'\r'];
+
 impl FromStr for DynamicVersionRange {
     type Err = VersError;
 
@@ -290,11 +292,19 @@ impl FromStr for DynamicVersionRange {
     /// ```
     /// use vers_rs::range::dynamic::DynamicVersionRange;
     /// use vers_rs::range::VersionRange;
+    /// use vers_rs::VersError;
     ///
     /// let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
     /// assert_eq!(range.versioning_scheme(), "npm");
     /// ```
     fn from_str(s: &str) -> Result<Self, VersError> {
+        if s.bytes().any(|b| ASCII_WHITESPACE_CHARACTERS.contains(&b)) {
+            return Err(VersError::InvalidCharacters(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string(),
+            ));
+        }
+
         // Extract the versioning scheme first to determine which type to use
         let versioning_scheme = DynamicVersionRange::extract_versioning_scheme(s)?;
 
@@ -380,10 +390,86 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
 
 #[cfg(test)]
 mod tests {
+    use std::mem::discriminant;
+
+    use rstest::rstest;
+
     use super::DynamicVersionRange;
     use crate::Comparator;
     use crate::VersError;
     use crate::range::VersionRange;
+
+    #[rstest]
+    #[case::invalid_tab("vers:npm\t/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_space("vers:npm /1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_space_in_contraint("vers:semver/1.2.3 |2.0.0", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::non_canonical_cargo_version("vers:cargo/1.2", VersError::InvalidVersionFormat("cargo".to_string(), "1.2".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    fn parse_with_spaces_should_fail(#[case] input: &str, #[case] expected: VersError) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(discriminant(&err), discriminant(&expected));
+    }
+
+    #[test]
+    fn duplicate_versions_are_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:npm/1.2.3|1.2.3".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::DuplicateVersion(_)));
+    }
+
+    #[test]
+    fn unordered_versions_are_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/2|1".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::UnorderedVersions(_, _)));
+    }
+
+    #[test]
+    fn comparators_within_versions_are_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0>1".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::UnorderedVersions(_, _)));
+    }
+
+    #[test]
+    fn multiple_asterisks_are_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/<1.0.*|>2.*".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::MultipleAsterisks(_)));
+    }
+
+    #[rstest]
+    #[case("vers:semver/1.0.0|<2.0.0")]
+    #[case("vers:semver/1.0.0|<=2.0.0")]
+    #[case("vers:semver/1.0.0|!=1.2.0|<2.0.0")]
+    #[case("vers:semver/1.0.0|!=1.2.0|<=2.0.0")]
+    #[case("vers:semver/1.0.0|1.2.0|<2.0.0")]
+    #[case("vers:semver/1.0.0|1.2.0|<=2.0.0")]
+    fn equal_followed_by_unallowed_successor_should_fail(#[case] input: &str) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::ConsecutiveOperators(_)));
+    }
+
+    #[rstest]
+    #[case("vers:semver/>1.0.0|>2.0.0")]
+    #[case("vers:semver/>1.0.0|1.5.0")]
+    #[case("vers:semver/>1.0.0|1.5.0|>2.0.0")]
+    #[case("vers:semver/>1.0.0|!=1.5.0|>2.0.0")]
+    #[case("vers:semver/<1.0.0|<2.0.0")]
+    #[case("vers:semver/<1.0.0|!=1.5.0|<2.0.0")]
+    fn greater_or_lesser_should_not_be_followed_by_another_greater_or_lesser(#[case] input: &str) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::ConsecutiveOperators(_)));
+    }
 
     #[test]
     fn test_parse_simple() {
@@ -576,6 +662,7 @@ mod tests {
             let json = serde_json::to_string(&range).unwrap();
             let roundtripped: DynamicVersionRange = serde_json::from_str(&json).unwrap();
             assert_eq!(range, roundtripped);
+            assert_eq!(input, range.to_string());
         }
     }
 
