@@ -70,6 +70,34 @@ pub fn contains(range: &DynamicVersionRange, version_str: String) -> Result<bool
     range.contains(version_str)
 }
 
+/// Determine if a parsed vers string only consists of a single version.
+///
+/// A vers string is a single version when it has exactly one constraint using
+/// the implicit equality comparator (e.g. `vers:npm/1.2.3`). Strings using `*`,
+/// `!=`, or any comparison operator (even just one, e.g. `vers:npm/>=1.0.0`)
+/// are not single versions, since they match more than one version.
+///
+/// # Arguments
+///
+/// * `s` - The version range specifier string to parse and check
+///
+/// # Returns
+///
+/// A `Result` containing a boolean indicating whether the string is a single version
+///
+/// # Examples
+///
+/// ```
+/// use vers_rs::is_single_version;
+///
+/// assert!(is_single_version("vers:npm/1.2.3").unwrap());
+/// assert!(!is_single_version("vers:npm/>=1.0.0|<2.0.0").unwrap());
+/// assert!(!is_single_version("vers:npm/>=1.0.0").unwrap());
+/// ```
+pub fn is_single_version(s: &str) -> Result<bool, VersError> {
+    Ok(parse(s)?.is_single_version())
+}
+
 /// Parse a native range string for the given versioning scheme into a `DynamicVersionRange`.
 ///
 /// This function accepts a scheme name and a native range string directly, without
