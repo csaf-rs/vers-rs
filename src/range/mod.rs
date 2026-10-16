@@ -27,6 +27,8 @@ pub trait VersionRange<V: VersionType> {
             [c] if c.comparator == Comparator::Equal => Some(&c.version),
             _ => None,
         }
+    }
+
     /// Check whether a valid (normalized) version range is open-ended, i.e. unbounded above.
     ///
     /// A range is open-ended when its highest bound among the range-style
