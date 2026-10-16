@@ -16,6 +16,58 @@ pub use range::vers::VersVersionRange;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+/// All versioning schemes (VERS **types**) defined by the [VERS specification](https://github.com/package-url/vers-spec).
+///
+/// This includes both the package ecosystem VERS types (named after their
+/// registered PURL type) and the general-purpose VERS types.
+///
+/// See <https://github.com/package-url/vers-spec/blob/main/docs/types/vers-types.md>
+/// for the authoritative list and descriptions of each scheme.
+pub const VERSIONING_SCHEMES: &[&str] = &[
+    // Package ecosystem VERS types
+    "alpm",
+    "apk",
+    "cargo",
+    "composer",
+    "cpan",
+    "dart",
+    "deb",
+    "gem",
+    "golang",
+    "hackage",
+    "maven",
+    "nuget",
+    "npm",
+    "pypi",
+    "rpm",
+    // General VERS types
+    "all",
+    "datetime",
+    "generic",
+    "intdot",
+    "lexicographic",
+    "none",
+    "semver",
+];
+
+/// Check if a string is a known versioning scheme (VERS **type**) as defined
+/// by the [VERS specification](https://github.com/package-url/vers-spec).
+///
+/// The comparison is case-sensitive, matching the canonical scheme names
+/// listed in [`VERSIONING_SCHEMES`].
+///
+/// # Examples
+///
+/// ```
+/// use vers_rs::is_versioning_scheme;
+///
+/// assert!(is_versioning_scheme("npm"));
+/// assert!(!is_versioning_scheme("not-a-scheme"));
+/// ```
+pub fn is_versioning_scheme(scheme: &str) -> bool {
+    VERSIONING_SCHEMES.contains(&scheme)
+}
+
 /// Parse a version range specifier string into a `DynamicVersionRange`.
 ///
 /// This function automatically detects the versioning scheme and constructs
