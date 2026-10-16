@@ -1,10 +1,7 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{cargo::CargoVersion, deb::DebVersion, semver::SemVer};
-use crate::{
-    ASCII_WHITESPACE_CHARACTERS, VersError, VersVersionRange, VersionConstraint,
-    is_registered_scheme,
-};
+use crate::{VersError, VersVersionRange, VersionConstraint, is_ascii_vers_whitespace, is_registered_scheme};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -296,7 +293,7 @@ impl FromStr for DynamicVersionRange {
     /// assert_eq!(range.versioning_scheme(), "npm");
     /// ```
     fn from_str(s: &str) -> Result<Self, VersError> {
-        if s.bytes().any(|b| ASCII_WHITESPACE_CHARACTERS.contains(&b)) {
+        if s.bytes().any(is_ascii_vers_whitespace) {
             return Err(VersError::InvalidCharacters(
                 "Control characters (tabs, newlines, carriage returns) are not permitted"
                     .to_string(),

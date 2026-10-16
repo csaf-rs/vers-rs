@@ -21,12 +21,12 @@
 //! It also implements `FromStr` for parsing a string into a `VersionRange` and
 //! `Display` for converting a `VersionRange` back to a string.
 
-use crate::ASCII_WHITESPACE_CHARACTERS;
 use crate::Comparator;
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
 use crate::constraint::VersionType;
 use crate::error::VersError;
+use crate::is_ascii_vers_whitespace;
 use crate::range::VersionRange;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -432,7 +432,7 @@ where
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.bytes().any(|b| ASCII_WHITESPACE_CHARACTERS.contains(&b)) {
+        if s.bytes().any(is_ascii_vers_whitespace) {
             return Err(VersError::InvalidCharacters(
                 "Control characters (tabs, newlines, carriage returns) are not permitted"
                     .to_string(),

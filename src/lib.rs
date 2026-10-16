@@ -15,6 +15,25 @@ pub use range::vers::VersVersionRange;
 
 // u8::is_ascii_whitespace doesn't cover 0x0B so we define our own array of ASCII whitespace characters
 const ASCII_WHITESPACE_CHARACTERS: [u8; 6] = [b' ', b'\t', b'\n', b'\r', 0x0B, 0x0C];
+
+// A 256-entry bytemap indexed by byte value, built once at compile time, so checking whether a
+// byte is ASCII whitespace is an O(1) lookup instead of scanning ASCII_WHITESPACE_CHARACTERS.
+const ASCII_WHITESPACE_BYTEMAP: [bool; 256] = {
+    let mut map = [false; 256];
+    let mut i = 0;
+    while i < ASCII_WHITESPACE_CHARACTERS.len() {
+        map[ASCII_WHITESPACE_CHARACTERS[i] as usize] = true;
+        i += 1;
+    }
+    map
+};
+
+/// Returns `true` if `b` is one of the ASCII whitespace/control characters disallowed in VERS
+/// strings.
+#[inline]
+pub(crate) const fn is_ascii_vers_whitespace(b: u8) -> bool {
+    ASCII_WHITESPACE_BYTEMAP[b as usize]
+}
 const ALLOWED_OPERATORS: [&str; 5] = [">", "<", "!=", "<=", ">="];
 
 #[cfg(feature = "wasm")]
