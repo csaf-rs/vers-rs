@@ -1,7 +1,7 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{cargo::CargoVersion, deb::DebVersion, semver::SemVer};
-use crate::{VersError, VersVersionRange, VersionConstraint};
+use crate::{VersError, VersVersionRange, VersionConstraint, is_versioning_scheme};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -127,6 +127,10 @@ impl DynamicVersionRange {
     /// assert!(range.contains("0.9".to_string()).unwrap());
     /// ```
     pub fn parse_native(scheme: &str, raw: &str) -> Result<Self, VersError> {
+        if !is_versioning_scheme(scheme) {
+            return Err(VersError::UnknownVersioningScheme(scheme.to_string()));
+        }
+
         let inner = match scheme {
             "semver" | "npm" => {
                 DynamicVersionRangeInner::SemVer(SemVer::from_native_string(scheme, raw)?)
@@ -293,6 +297,10 @@ impl FromStr for DynamicVersionRange {
     fn from_str(s: &str) -> Result<Self, VersError> {
         // Extract the versioning scheme first to determine which type to use
         let versioning_scheme = DynamicVersionRange::extract_versioning_scheme(s)?;
+
+        if !is_versioning_scheme(&versioning_scheme) {
+            return Err(VersError::UnknownVersioningScheme(versioning_scheme));
+        }
 
         let inner = match versioning_scheme.as_str() {
             "semver" | "npm" => DynamicVersionRangeInner::SemVer(s.parse()?),
@@ -472,11 +480,39 @@ mod tests {
 
     #[test]
     fn test_dynamic_parse_unsupported() {
+        // "pypi" is a valid VERS scheme per the spec, but not yet implemented.
         let range: Result<DynamicVersionRange, VersError> = "vers:pypi/>=1.0.0|<2.0.0".parse();
         assert!(range.is_err());
         assert!(matches!(
             range.unwrap_err(),
             VersError::UnsupportedVersioningScheme(_)
+        ));
+    }
+
+    #[test]
+    fn test_dynamic_parse_unknown() {
+        // "not-a-scheme" is not defined by the VERS spec at all.
+        let range: Result<DynamicVersionRange, VersError> =
+            "vers:not-a-scheme/>=1.0.0|<2.0.0".parse();
+        assert!(range.is_err());
+        assert!(matches!(
+            range.unwrap_err(),
+            VersError::UnknownVersioningScheme(_)
+        ));
+    }
+
+    #[test]
+    fn test_parse_native_unknown_scheme() {
+        let result = DynamicVersionRange::parse_native("not-a-scheme", ">=1.0.0");
+        assert!(matches!(result, Err(VersError::UnknownVersioningScheme(_))));
+    }
+
+    #[test]
+    fn test_parse_native_unsupported_scheme() {
+        let result = DynamicVersionRange::parse_native("pypi", ">=1.0.0");
+        assert!(matches!(
+            result,
+            Err(VersError::UnsupportedVersioningScheme(_))
         ));
     }
 
