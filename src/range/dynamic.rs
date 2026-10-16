@@ -1,7 +1,9 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{cargo::CargoVersion, deb::DebVersion, semver::SemVer};
-use crate::{VersError, VersVersionRange, VersionConstraint, is_ascii_vers_whitespace, is_registered_scheme};
+use crate::{
+    VersError, VersVersionRange, VersionConstraint, is_ascii_vers_whitespace, is_registered_scheme,
+};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
