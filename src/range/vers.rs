@@ -581,4 +581,94 @@ mod tests {
         let result: Result<VersVersionRange<SemVer>, _> = serde_json::from_str(json_data);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_is_open_ended_bare_greater_than_or_equal() {
+        let range: VersVersionRange<SemVer> = "vers:npm/>=1.0.0".parse().unwrap();
+        assert!(range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bare_greater_than() {
+        let range: VersVersionRange<SemVer> = "vers:npm/>1.0.0".parse().unwrap();
+        assert!(range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bare_less_than_is_not_open_ended() {
+        let range: VersVersionRange<SemVer> = "vers:npm/<1.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bare_less_than_or_equal_is_not_open_ended() {
+        let range: VersVersionRange<SemVer> = "vers:npm/<=1.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bounded_range_is_not_open_ended() {
+        let range: VersVersionRange<SemVer> = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_star_is_not_open_ended() {
+        // "*" has no explicit ">" or ">=" bound, so it is not considered open-ended
+        // even though it matches every version.
+        let range: VersVersionRange<SemVer> = "vers:npm/*".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_empty_constraints_is_not_open_ended() {
+        let range = VersVersionRange::<SemVer>::new("npm".to_string(), vec![]);
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bare_equal_is_not_open_ended() {
+        let range: VersVersionRange<SemVer> = "vers:npm/1.2.3".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_only_not_equal_constraints_is_not_open_ended() {
+        // No ">" or ">=" range constraint is present at all, so even though every
+        // version except the excluded ones is contained, this is not "open-ended"
+        // under our definition (it requires an explicit trailing ">"/">=" bound).
+        let range: VersVersionRange<SemVer> = "vers:npm/!=1.0.0|!=2.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_trailing_not_equal_after_unbounded_greater_than_or_equal() {
+        // Regression test for the edge case highlighted by package-url/vers-spec's
+        // tests/pypi_range_validate_test.json, which treats
+        // "vers:pypi/...|>=0.0.6|!=0.8" as already-canonical: a "!=" constraint can
+        // sort *after* the final ">"/">=" bound (it has a higher version) without
+        // affecting whether the range is unbounded above. Naively checking only the
+        // last constraint in the (version-sorted) list would miss this.
+        let range: VersVersionRange<SemVer> =
+            "vers:npm/>0.0.0|>=0.0.1|0.0.2|0.0.3|0.0.4|<0.0.5|>=0.0.6|!=0.8.0"
+                .parse()
+                .unwrap();
+        assert!(range.is_open_ended());
+        assert!(range.contains("999.0.0".parse().unwrap()).unwrap());
+        assert!(!range.contains("0.8.0".parse().unwrap()).unwrap());
+    }
+
+    #[test]
+    fn test_is_open_ended_disjoint_range_ending_unbounded() {
+        // Two disjoint intervals: below 1.0.0, or at/above 2.0.0 and beyond.
+        let range: VersVersionRange<SemVer> = "vers:npm/<=1.0.0|>=2.0.0".parse().unwrap();
+        assert!(range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_disjoint_range_ending_bounded() {
+        // Two disjoint intervals, but the highest one is still capped from above.
+        let range: VersVersionRange<SemVer> = "vers:npm/<1.0.0|>=2.0.0|<3.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
 }

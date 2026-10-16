@@ -418,6 +418,18 @@ mod tests {
     }
 
     #[test]
+    fn test_is_open_ended_via_trait_default() {
+        let open: DynamicVersionRange = "vers:npm/>=1.0.0".parse().unwrap();
+        assert!(open.is_open_ended());
+
+        let bounded: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
+        assert!(!bounded.is_open_ended());
+
+        let star: DynamicVersionRange = "vers:npm/*".parse().unwrap();
+        assert!(!star.is_open_ended());
+    }
+
+    #[test]
     fn test_parse_with_spaces() {
         let range: DynamicVersionRange = "vers:npm/ >= 1.0.0 | < 2.0.0 ".parse().unwrap();
         assert_eq!(range.versioning_scheme(), "npm");
