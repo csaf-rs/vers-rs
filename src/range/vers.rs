@@ -439,7 +439,7 @@ where
             ));
         }
 
-        // ToDo use DynamicVersionRange::extract_versioning_scheme here
+        // ToDo use DynamicVersionRange::extract_versioning_scheme here #95
         let parts: Vec<&str> = s.splitn(2, ':').collect();
         if parts.len() != 2 || parts[0] != "vers" {
             return Err(VersError::InvalidScheme);
