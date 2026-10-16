@@ -13,7 +13,8 @@ pub use range::VersionRange;
 pub use range::dynamic::DynamicVersionRange;
 pub use range::vers::VersVersionRange;
 
-const ASCII_WHITESPACE_CHARACTERS: [u8; 4] = *b" \t\n\r";
+// u8::is_ascii_whitespace doesn't cover 0x0B so we define our own array of ASCII whitespace characters
+const ASCII_WHITESPACE_CHARACTERS: [u8; 6] = [b' ', b'\t', b'\n', b'\r', 0x0B, 0x0C];
 const ALLOWED_OPERATORS: [&str; 5] = [">", "<", "!=", "<=", ">="];
 
 #[cfg(feature = "wasm")]

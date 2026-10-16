@@ -400,6 +400,10 @@ mod tests {
 
     #[rstest]
     #[case::invalid_tab("vers:npm\t/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_newline("vers:npm\n/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_carriage_return("vers:npm\r/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_form_feed("vers:npm/\x0c1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_vertical_tab("vers:npm/\x0b1.2.3", VersError::InvalidCharacters("blub".to_string()))]
     #[case::invalid_space_in_type("vers:npm /1.2.3", VersError::InvalidCharacters("blub".to_string()))]
     #[case::invalid_space_in_constraint("vers:semver/1.2.3 |2.0.0", VersError::InvalidCharacters("blub".to_string()))]
     fn parse_with_spaces_should_fail(#[case] input: &str, #[case] expected: VersError) {
