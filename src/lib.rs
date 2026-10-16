@@ -59,12 +59,12 @@ pub const VERSIONING_SCHEMES: &[&str] = &[
 /// # Examples
 ///
 /// ```
-/// use vers_rs::is_versioning_scheme;
+/// use vers_rs::is_registered_scheme;
 ///
-/// assert!(is_versioning_scheme("npm"));
-/// assert!(!is_versioning_scheme("not-a-scheme"));
+/// assert!(is_registered_scheme("npm"));
+/// assert!(!is_registered_scheme("not-a-scheme"));
 /// ```
-pub fn is_versioning_scheme(scheme: &str) -> bool {
+pub fn is_registered_scheme(scheme: &str) -> bool {
     VERSIONING_SCHEMES.contains(&scheme)
 }
 

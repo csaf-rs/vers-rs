@@ -1,7 +1,7 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{cargo::CargoVersion, deb::DebVersion, semver::SemVer};
-use crate::{VersError, VersVersionRange, VersionConstraint, is_versioning_scheme};
+use crate::{VersError, VersVersionRange, VersionConstraint, is_registered_scheme};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -127,7 +127,7 @@ impl DynamicVersionRange {
     /// assert!(range.contains("0.9".to_string()).unwrap());
     /// ```
     pub fn parse_native(scheme: &str, raw: &str) -> Result<Self, VersError> {
-        if !is_versioning_scheme(scheme) {
+        if !is_registered_scheme(scheme) {
             return Err(VersError::UnknownVersioningScheme(scheme.to_string()));
         }
 
@@ -298,7 +298,7 @@ impl FromStr for DynamicVersionRange {
         // Extract the versioning scheme first to determine which type to use
         let versioning_scheme = DynamicVersionRange::extract_versioning_scheme(s)?;
 
-        if !is_versioning_scheme(&versioning_scheme) {
+        if !is_registered_scheme(&versioning_scheme) {
             return Err(VersError::UnknownVersioningScheme(versioning_scheme));
         }
 
