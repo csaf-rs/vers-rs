@@ -22,6 +22,7 @@
 //! `Display` for converting a `VersionRange` back to a string.
 
 use crate::Comparator;
+use crate::DynamicVersionRange;
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
 use crate::constraint::VersionType;
@@ -445,24 +446,10 @@ where
             ));
         }
 
-        // ToDo use DynamicVersionRange::extract_versioning_scheme here #95
-        let parts: Vec<&str> = s.splitn(2, ':').collect();
-        if parts.len() != 2 || parts[0] != "vers" {
-            return Err(VersError::InvalidScheme);
-        }
-
-        let specifier_parts: Vec<&str> = parts[1].splitn(2, '/').collect();
-        if specifier_parts.len() != 2 {
-            return Err(VersError::MissingVersioningScheme);
-        }
-
-        let versioning_scheme = specifier_parts[0].to_lowercase();
-        if versioning_scheme.is_empty() {
-            return Err(VersError::MissingVersioningScheme);
-        }
+        let (versioning_scheme, constraints_str) =
+            DynamicVersionRange::extract_versioning_scheme(s)?;
 
         // check constraints
-        let constraints_str = specifier_parts[1].trim();
         if constraints_str.is_empty() {
             return Err(VersError::EmptyConstraints);
         }

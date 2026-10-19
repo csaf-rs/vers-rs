@@ -154,16 +154,10 @@ impl DynamicVersionRange {
     ///
     /// This is a helper function used internally to determine which version type
     /// to use when parsing the range.
-    fn extract_versioning_scheme(s: &str) -> Result<String, VersError> {
+    pub(crate) fn extract_versioning_scheme(s: &str) -> Result<(String, String), VersError> {
         // Split on colon
         let parts: Vec<&str> = s.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            return Err(VersError::InvalidScheme);
-        }
-
-        // Validate URI scheme
-        let scheme = parts[0];
-        if scheme != "vers" {
+        if parts.len() != 2 || parts[0] != "vers" {
             return Err(VersError::InvalidScheme);
         }
 
@@ -179,7 +173,7 @@ impl DynamicVersionRange {
             return Err(VersError::MissingVersioningScheme);
         }
 
-        Ok(versioning_scheme)
+        Ok((versioning_scheme, specifier_parts[1].to_string()))
     }
 }
 
@@ -309,7 +303,7 @@ impl FromStr for DynamicVersionRange {
         }
 
         // Extract the versioning scheme first to determine which type to use
-        let versioning_scheme = DynamicVersionRange::extract_versioning_scheme(s)?;
+        let (versioning_scheme, _) = DynamicVersionRange::extract_versioning_scheme(s)?;
 
         if !is_registered_scheme(&versioning_scheme) {
             return Err(VersError::UnknownVersioningScheme(versioning_scheme));
