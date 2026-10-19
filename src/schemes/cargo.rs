@@ -8,6 +8,7 @@ use crate::VersError;
 use crate::VersionConstraint;
 use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
+use crate::is_ascii_vers_whitespace;
 use derive_more::Display;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
@@ -31,11 +32,13 @@ impl NativeVersionConverter for CargoVersion {
     const SCHEME_NAME: &'static str = CARGO_SCHEME;
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
-        if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
-            return Err(VersError::InvalidConstraint(
-                "Control characters are not permitted in native version ranges".to_string(),
+        if raw.bytes().any(is_ascii_vers_whitespace) {
+            return Err(VersError::InvalidCharacters(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string(),
             ));
         }
+
         let raw = raw.trim();
         if raw.is_empty() {
             return Err(VersError::EmptyConstraints);

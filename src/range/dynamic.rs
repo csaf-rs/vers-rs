@@ -762,6 +762,19 @@ mod tests {
         assert_eq!(range.versioning_scheme(), "semver");
     }
 
+    #[rstest]
+    #[case(" >=1.0.0")]
+    #[case(">= 1.0.0")]
+    #[case(">=1.0.0 ")]
+    #[case(">=1.0.0| <2.0.0")]
+    #[case(">=1.0.0 | <2.0.0")]
+    #[case(">=1.0.0 | <2.0.0 ")]
+    #[case(">=1.0.0 | < 2.0.0 ")]
+    fn test_parse_native_npm_accepts_whitespaces(#[case] input: &str) {
+        let range = DynamicVersionRange::parse_native("npm", input).unwrap();
+        assert_eq!(range.versioning_scheme(), "npm");
+    }
+
     #[test]
     fn test_parse_native_normalizes() {
         // parse_native should run normalize_and_validate:

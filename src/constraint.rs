@@ -58,8 +58,7 @@ where
 
     /// Parse a full native range string into one or more standard `VersionConstraint`s.
     ///
-    /// This is called by `VersVersionRange::from_str` (for the `vers:scheme/...` format)
-    /// and by [`Self::from_native_string`] (for bare native strings). It receives
+    /// This is called by [`Self::from_native_string`] (for bare native strings). It receives
     /// the entire constraint portion of the vers string (after the scheme prefix).
     ///
     /// The default implementation splits on `|` and calls [`Self::from_native_constraint`] for
@@ -72,7 +71,6 @@ where
         }
 
         let segments: Vec<&str> = raw.split('|').map(|s| s.trim()).collect();
-
         let mut constraints = Vec::new();
         for segment in segments {
             if segment.is_empty() {
