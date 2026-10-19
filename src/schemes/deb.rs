@@ -48,7 +48,10 @@ impl NativeVersionConverter for DebVersion {
     }
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
-        if raw.bytes().any(is_ascii_vers_whitespace) {
+        if raw
+            .bytes()
+            .any(|b| b != b' ' && is_ascii_vers_whitespace(b))
+        {
             return Err(VersError::InvalidCharacters(
                 "Control characters (tabs, newlines, carriage returns) are not permitted"
                     .to_string(),
