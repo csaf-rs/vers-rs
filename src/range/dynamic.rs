@@ -295,6 +295,12 @@ impl FromStr for DynamicVersionRange {
     /// assert_eq!(range.versioning_scheme(), "npm");
     /// ```
     fn from_str(s: &str) -> Result<Self, VersError> {
+        if !s.is_ascii() {
+            return Err(VersError::InvalidCharacters(
+                "A VERS string shall only contain ASCII characters".to_string(),
+            ));
+        }
+
         if s.bytes().any(is_ascii_vers_whitespace) {
             return Err(VersError::InvalidCharacters(
                 "Control characters (tabs, newlines, carriage returns) are not permitted"
@@ -405,7 +411,14 @@ mod tests {
     #[case::invalid_vertical_tab("vers:npm/\x0b1.2.3", VersError::InvalidCharacters("blub".to_string()))]
     #[case::invalid_space_in_type("vers:npm /1.2.3", VersError::InvalidCharacters("blub".to_string()))]
     #[case::invalid_space_in_constraint("vers:semver/1.2.3 |2.0.0", VersError::InvalidCharacters("blub".to_string()))]
-    fn parse_with_spaces_should_fail(#[case] input: &str, #[case] expected: VersError) {
+    #[case::non_ascii_in_type("vers:npém/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::non_ascii_in_version("vers:npm/1.2.3é", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::non_ascii_whitespace("vers:npm/1.2.3\u{00A0}", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::non_ascii_fullwidth_digit("vers:npm/１.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    fn parse_with_disallowed_characters_should_fail(
+        #[case] input: &str,
+        #[case] expected: VersError,
+    ) {
         let result: Result<DynamicVersionRange, VersError> = input.parse();
         assert!(result.is_err());
         let err = result.unwrap_err();

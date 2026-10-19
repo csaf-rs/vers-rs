@@ -432,6 +432,12 @@ where
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if !s.is_ascii() {
+            return Err(VersError::InvalidCharacters(
+                "A VERS string shall only contain ASCII characters".to_string(),
+            ));
+        }
+
         if s.bytes().any(is_ascii_vers_whitespace) {
             return Err(VersError::InvalidCharacters(
                 "Control characters (tabs, newlines, carriage returns) are not permitted"
