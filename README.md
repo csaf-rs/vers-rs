@@ -56,7 +56,6 @@ browser.
 
 - Parse version range specifiers in the format `vers:<versioning-scheme>/<version-constraint>|<version-constraint>|...`
 - Validate version range specifiers according to the rules in the specification
-- Normalize and simplify version range specifiers
 - Check if a version is within a specified range
 - Support for different versioning schemes (npm/semver, pypi, maven, deb, etc.)
 - Dynamic dispatch wrapper that automatically detects version schemes

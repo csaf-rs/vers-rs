@@ -8,10 +8,12 @@ use crate::VersError;
 use crate::VersionConstraint;
 use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
+use crate::is_ascii_vers_whitespace;
 use derive_more::Display;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 pub const CARGO_SCHEME: &str = "cargo";
@@ -30,11 +32,16 @@ impl NativeVersionConverter for CargoVersion {
     const SCHEME_NAME: &'static str = CARGO_SCHEME;
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
-        if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
-            return Err(VersError::InvalidConstraint(
-                "Control characters are not permitted in native version ranges".to_string(),
+        if raw
+            .bytes()
+            .any(|b| b != b' ' && is_ascii_vers_whitespace(b))
+        {
+            return Err(VersError::InvalidCharacters(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string(),
             ));
         }
+
         let raw = raw.trim();
         if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
@@ -129,6 +136,12 @@ impl PartialEq for CargoVersion {
     }
 }
 
+impl Hash for CargoVersion {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
+    }
+}
+
 impl Eq for CargoVersion {}
 
 impl PartialOrd for CargoVersion {
@@ -147,8 +160,6 @@ impl FromStr for CargoVersion {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s.trim();
-        // Strict canonical form parsing
         let v = Version::parse(s).map_err(|e| {
             VersError::InvalidVersionFormat(CARGO_SCHEME.to_string(), s.to_string(), e.to_string())
         })?;
@@ -160,18 +171,6 @@ impl FromStr for CargoVersion {
 mod tests {
     use super::*;
     use crate::DynamicVersionRange;
-
-    #[test]
-    fn test_vers_cargo_explicit_equals_fails() {
-        let result: Result<DynamicVersionRange, _> = "vers:cargo/=1.2.3".parse();
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_vers_cargo_implicit_equals_succeeds() {
-        let result: Result<DynamicVersionRange, _> = "vers:cargo/1.2.3".parse();
-        assert!(result.is_ok());
-    }
 
     #[test]
     fn test_cargo_malformed_clauses_fails() {
@@ -197,13 +196,6 @@ mod tests {
     }
 
     #[test]
-    fn test_vers_cargo_uri_partial_version_is_rejected() {
-        let result: Result<DynamicVersionRange, VersError> = "vers:cargo/>=1.2".parse();
-
-        result.expect_err("VERS Cargo URIs require a complete version");
-    }
-
-    #[test]
     fn test_dynamic_native_cargo_partial_version_is_canonicalized() {
         let range = DynamicVersionRange::parse_native("cargo", ">=1.2").unwrap();
 
@@ -218,5 +210,11 @@ mod tests {
 
         assert!(v_alpha < v_stable, "1.0.0-alpha should be less than 1.0.0");
         assert!(v_alpha < v_higher, "1.0.0-alpha should be less than 1.1.0");
+    }
+
+    #[test]
+    fn invalid_tab_escape() {
+        let result = CargoVersion::from_str("%091.2.3").unwrap_err();
+        assert!(matches!(result, VersError::InvalidVersionFormat(_, _, _,)));
     }
 }

@@ -2,10 +2,12 @@ use crate::VersError;
 use crate::VersionConstraint;
 use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
+use crate::is_ascii_vers_whitespace;
 use debversion::Version as DebVersionInner;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 /// Scheme identifier string for Debian versions
@@ -25,10 +27,34 @@ impl Default for DebVersion {
 impl NativeVersionConverter for DebVersion {
     const SCHEME_NAME: &'static str = DEB_SCHEME;
 
+    /// Debian version relations (`<<`, `<=`, `=`, `>=`, `>>`) instead of the
+    /// standard vers operators; notably no bare `<`/`>`/`!=`. Longer tokens
+    /// are listed before their single-character prefixes (`<<` before `<=`,
+    /// `>>` before `>=`) so they aren't shadowed.
+    fn native_operators() -> &'static [(&'static str, Comparator)] {
+        &[
+            ("<<", Comparator::LessThan),
+            ("<=", Comparator::LessThanOrEqual),
+            (">>", Comparator::GreaterThan),
+            (">=", Comparator::GreaterThanOrEqual),
+            ("=", Comparator::Equal),
+        ]
+    }
+
+    /// Debian version relations always require an explicit operator and
+    /// version; there is no wildcard token.
+    fn native_wildcard() -> Option<&'static str> {
+        None
+    }
+
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
-        if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
-            return Err(VersError::InvalidConstraint(
-                "Control characters are not permitted in native version ranges".to_string(),
+        if raw
+            .bytes()
+            .any(|b| b != b' ' && is_ascii_vers_whitespace(b))
+        {
+            return Err(VersError::InvalidCharacters(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string(),
             ));
         }
 
@@ -47,45 +73,6 @@ impl NativeVersionConverter for DebVersion {
 
         Ok(vec![Self::from_native_constraint(raw)?])
     }
-
-    fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
-        let raw = raw.trim();
-
-        if raw.is_empty() {
-            return Err(VersError::InvalidConstraint("Empty constraint".to_string()));
-        }
-
-        let (comparator, version_str) = if let Some(stripped) = raw.strip_prefix("<<") {
-            (Comparator::LessThan, stripped)
-        } else if let Some(stripped) = raw.strip_prefix("<=") {
-            (Comparator::LessThanOrEqual, stripped)
-        } else if let Some(stripped) = raw.strip_prefix(">>") {
-            (Comparator::GreaterThan, stripped)
-        } else if let Some(stripped) = raw.strip_prefix(">=") {
-            (Comparator::GreaterThanOrEqual, stripped)
-        } else if let Some(stripped) = raw.strip_prefix('=') {
-            (Comparator::Equal, stripped)
-        } else {
-            return Err(VersError::InvalidConstraint(format!(
-                "invalid Debian comparator in '{}': valid comparators are <<, <=, =, >=, >>",
-                raw
-            )));
-        };
-
-        let version_str = version_str.trim();
-        if version_str.is_empty() {
-            return Err(VersError::InvalidConstraint("Missing version".to_string()));
-        }
-
-        let parsed_version = version_str.parse::<DebVersion>().map_err(|e| {
-            VersError::InvalidConstraint(format!(
-                "Failed to parse version '{}': {}",
-                version_str, e
-            ))
-        })?;
-
-        Ok(VersionConstraint::new(comparator, parsed_version))
-    }
 }
 
 impl FromStr for DebVersion {
@@ -102,6 +89,12 @@ impl FromStr for DebVersion {
 impl PartialEq for DebVersion {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
+    }
+}
+
+impl Hash for DebVersion {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
