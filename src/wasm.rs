@@ -112,7 +112,7 @@ mod tests {
         let scheme = "semver";
         let raw = "invalid";
         let parse_result = parse_native(scheme, raw);
-        assert_matches!(parse_result, Err(VersError::InvalidVersionFormat(_, _, _)));
+        assert_matches!(parse_result, Err(VersError::InvalidConstraint(_)));
     }
 
     #[wasm_bindgen_test]
