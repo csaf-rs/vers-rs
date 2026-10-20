@@ -176,7 +176,7 @@ where
             let version = version_str.parse::<Self>().map_err(Into::into)?;
             Ok(VersionConstraint::new(comparator, version))
         } else {
-            return Err(VersError::InvalidConstraint(raw.into()));
+            Err(VersError::InvalidConstraint(raw.into()))
         }
     }
 }
