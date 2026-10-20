@@ -34,7 +34,7 @@ const ASCII_WHITESPACE_BYTEMAP: [bool; 256] = {
 pub(crate) const fn is_ascii_vers_whitespace(b: u8) -> bool {
     ASCII_WHITESPACE_BYTEMAP[b as usize]
 }
-const ALLOWED_OPERATORS: [&str; 5] = [">", "<", "!=", "<=", ">="];
+const RESERVED_OPERATOR_TOKENS: [&str; 5] = [">", "<", "!=", "<=", ">="];
 
 #[cfg(feature = "wasm")]
 pub mod wasm;

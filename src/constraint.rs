@@ -7,8 +7,8 @@
 //! and a version string. It defines a condition that a version must satisfy to be
 //! considered within a version range.
 
-use crate::{ALLOWED_OPERATORS, VersVersionRange};
 use crate::{Comparator, VersError};
+use crate::{RESERVED_OPERATOR_TOKENS, VersVersionRange};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -296,10 +296,13 @@ impl<V: VersionType> VersionConstraint<V> {
         }
 
         if version.is_empty() && comparator != Comparator::Any {
-            return Err(VersError::InvalidConstraint("Missing version".to_string()));
+            return Err(VersError::MissingVersionInConstraint);
         }
 
-        if ALLOWED_OPERATORS.iter().any(|op| version.contains(op)) {
+        if RESERVED_OPERATOR_TOKENS
+            .iter()
+            .any(|op| version.contains(op))
+        {
             return Err(VersError::UnencodedOperator(version.to_string()));
         }
 

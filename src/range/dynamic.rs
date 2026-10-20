@@ -466,6 +466,14 @@ mod tests {
     }
 
     #[test]
+    fn missing_version_is_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/>".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_matches!(err, VersError::MissingVersionInConstraint);
+    }
+
+    #[test]
     fn invalid_url_encoding_should_fail() {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0%3X1".parse();
         assert!(result.is_err());
