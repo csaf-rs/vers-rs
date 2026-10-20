@@ -785,6 +785,13 @@ mod tests {
         assert_eq!(range.to_string(), "vers:npm/>=1.0.0|<2.0.0");
     }
 
+    #[test]
+    fn parse_native_deb_without_equals_should_fail() {
+        let result = DynamicVersionRange::parse_native("deb", "1.0");
+        println!("Result: {:?}", result);
+        assert!(result.is_err());
+    }
+
     #[cfg(feature = "wasm")]
     #[test]
     fn test_cached_constraints_excluded_from_ts_decl() {

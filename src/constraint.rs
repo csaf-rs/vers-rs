@@ -162,18 +162,22 @@ where
             return Ok(VersionConstraint::new(Comparator::Any, Self::default()));
         }
 
-        let (comparator, version_str) = Self::native_operators()
+        let operator_match = Self::native_operators()
             .iter()
-            .find_map(|(token, comparator)| raw.strip_prefix(token).map(|rest| (*comparator, rest)))
-            .unwrap_or((Comparator::Equal, raw));
+            .find_map(|(token, comparator)| {
+                raw.strip_prefix(token).map(|rest| (*comparator, rest))
+            });
+        if let Some((comparator, version_str)) = operator_match {
+            let version_str = version_str.trim();
+            if version_str.is_empty() {
+                return Err(VersError::InvalidConstraint("Missing version".to_string()));
+            }
 
-        let version_str = version_str.trim();
-        if version_str.is_empty() {
-            return Err(VersError::InvalidConstraint("Missing version".to_string()));
+            let version = version_str.parse::<Self>().map_err(Into::into)?;
+            Ok(VersionConstraint::new(comparator, version))
+        } else {
+            return Err(VersError::InvalidConstraint(raw.into()));
         }
-
-        let version = version_str.parse::<Self>().map_err(Into::into)?;
-        Ok(VersionConstraint::new(comparator, version))
     }
 }
 
@@ -415,13 +419,6 @@ mod native_version_converter_tests {
         // of an implicit-equal version string, which then fails to parse.
         let result = TestVersion::from_native_constraint(">=1");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn implicit_equal_without_any_operator_token() {
-        let constraint = TestVersion::from_native_constraint("42").unwrap();
-        assert_eq!(constraint.comparator, Comparator::Equal);
-        assert_eq!(constraint.version, TestVersion(42));
     }
 
     #[test]
