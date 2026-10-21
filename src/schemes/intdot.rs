@@ -380,6 +380,8 @@ mod tests {
     #[test]
     fn native_parsing_strips_leading_zeros_per_segment() {
         assert_eq!(parse_lenient("01.002.0003").unwrap().to_string(), "1.2.3");
+        assert_eq!(parse_lenient("01.000.0003").unwrap().to_string(), "1.0.3");
+        assert_eq!(parse_lenient("00.000.0003").unwrap().to_string(), "0.0.3");
     }
 
     #[test]
@@ -487,13 +489,13 @@ mod tests {
 
     #[test]
     fn mixed_leading_zero_forms_sort_by_normalized_numeric_segments() {
-        let mut versions: Vec<IntDotVersion> = ["1.0002.10", "1.2.2", "1.02.0011"]
+        let mut versions: Vec<IntDotVersion> = ["1.0002.10", "1.00.6", "1.2.2", "1.02.0011"]
             .into_iter()
             .map(|s| parse_lenient(s).unwrap())
             .collect();
         versions.sort();
         let sorted: Vec<String> = versions.iter().map(ToString::to_string).collect();
-        assert_eq!(sorted, vec!["1.2.2", "1.2.10", "1.2.11"]);
+        assert_eq!(sorted, vec!["1.0.6", "1.2.2", "1.2.10", "1.2.11"]);
     }
 
     #[test]
