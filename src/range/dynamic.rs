@@ -1,6 +1,6 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
-use crate::schemes::{cargo::CargoVersion, deb::DebVersion, semver::SemVer};
+use crate::schemes::{cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, semver::SemVer};
 use crate::{
     VersError, VersVersionRange, VersionConstraint, is_ascii_vers_whitespace, is_registered_scheme,
 };
@@ -25,6 +25,8 @@ enum DynamicVersionRangeInner {
     Deb(VersVersionRange<DebVersion>),
     /// Cargo-based range ("cargo" scheme)
     Cargo(VersVersionRange<CargoVersion>),
+    /// Generic dot-separated-integers range ("intdot" scheme)
+    IntDot(VersVersionRange<IntDotVersion>),
 }
 
 /// A dynamic version range that automatically detects the versioning scheme.
@@ -34,7 +36,10 @@ enum DynamicVersionRangeInner {
 /// version range internally.
 ///
 /// It currently supports the following schemes:
-/// - "semver" and "npm" schemes using SemVer version type
+/// - "semver" and "npm" schemes using the `SemVer` version type
+/// - "deb" using the `DebVersion` version type
+/// - "cargo" using the `CargoVersion` version type
+/// - "intdot" using the `IntDotVersion` version type
 ///
 /// # Examples
 ///
@@ -62,7 +67,7 @@ enum DynamicVersionRangeInner {
 #[cfg_attr(
     feature = "wasm",
     tsify(
-        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion>"
+        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion>"
     )
 )]
 pub struct DynamicVersionRange {
@@ -98,6 +103,7 @@ macro_rules! dispatch_inner {
             DynamicVersionRangeInner::SemVer($range) => $expr,
             DynamicVersionRangeInner::Deb($range) => $expr,
             DynamicVersionRangeInner::Cargo($range) => $expr,
+            DynamicVersionRangeInner::IntDot($range) => $expr,
         }
     };
 }
@@ -140,6 +146,9 @@ impl DynamicVersionRange {
             "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(scheme, raw)?),
             "cargo" => {
                 DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
+            }
+            "intdot" => {
+                DynamicVersionRangeInner::IntDot(IntDotVersion::from_native_string(scheme, raw)?)
             }
             _ => return Err(VersError::UnsupportedVersioningScheme(scheme.to_string())),
         };
@@ -231,6 +240,9 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::Cargo(range) => {
                 range.contains(version_str.parse::<CargoVersion>()?)
             }
+            DynamicVersionRangeInner::IntDot(range) => {
+                range.contains(version_str.parse::<IntDotVersion>()?)
+            }
         }
     }
 
@@ -313,6 +325,7 @@ impl FromStr for DynamicVersionRange {
             "semver" | "npm" => DynamicVersionRangeInner::SemVer(s.parse()?),
             "deb" => DynamicVersionRangeInner::Deb(s.parse()?),
             "cargo" => DynamicVersionRangeInner::Cargo(s.parse()?),
+            "intdot" => DynamicVersionRangeInner::IntDot(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
         };
 
@@ -370,6 +383,9 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             "cargo" => DynamicVersionRangeInner::Cargo(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            "intdot" => DynamicVersionRangeInner::IntDot(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             other => {
@@ -701,6 +717,7 @@ mod tests {
             // Debian version format requires a complete version including revision (e.g., 1.0-0)
             "vers:deb/>=1.0-0",
             "vers:cargo/>=1.0.0|<2.0.0",
+            "vers:intdot/>=1.2|<2.0",
         ] {
             let range: DynamicVersionRange = input.parse().unwrap();
             let json = serde_json::to_string(&range).unwrap();
@@ -726,12 +743,17 @@ mod tests {
         assert!(!range.contains("0.9.0".to_string()).unwrap());
     }
 
-    #[test]
-    fn test_contains_star() {
-        let range: DynamicVersionRange = "vers:npm/*".parse().unwrap();
+    #[rstest]
+    #[case("vers:npm/*")]
+    #[case("vers:deb/*")]
+    #[case("vers:cargo/*")]
+    #[case("vers:intdot/*")]
+    fn test_contains_star(#[case] range: &str) {
+        let range: DynamicVersionRange = range.parse().unwrap();
         assert!(range.contains("1.0.0".to_string()).unwrap());
         assert!(range.contains("2.0.0".to_string()).unwrap());
         assert!(range.contains("0.0.1".to_string()).unwrap());
+        assert!(range.contains("999.999.999".to_string()).unwrap());
     }
 
     #[test]
@@ -796,7 +818,6 @@ mod tests {
     #[test]
     fn parse_native_deb_without_equals_should_fail() {
         let result = DynamicVersionRange::parse_native("deb", "1.0");
-        println!("Result: {:?}", result);
         assert!(result.is_err());
     }
 
@@ -815,7 +836,7 @@ mod tests {
 
         assert!(
             DynamicVersionRange::DECL.contains(
-                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion>;"
+                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion>;"
             )
         );
     }
