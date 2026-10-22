@@ -33,7 +33,11 @@
 //! [`DynamicVersionRange::parse_native`](crate::range::dynamic::DynamicVersionRange::parse_native))
 //! is more permissive: it tolerates and normalizes leading zeros and ignored
 //! suffixes, since real-world version strings commonly include this kind of
-//! non-canonical variation.
+//! non-canonical variation. The same lenient parsing is used for the version
+//! being tested in
+//! [`DynamicVersionRange::contains`](crate::range::dynamic::DynamicVersionRange::contains):
+//! only the vers string itself (the range) is required to be in canonical
+//! form.
 //!
 //! Note that an explicit trailing zero segment (e.g. `2.0`, `1.2.0.0`) is
 //! *not* considered non-canonical by either parsing mode: it has no leading
@@ -250,10 +254,15 @@ fn is_canonical(s: &str) -> bool {
 /// the first character that is neither an ASCII digit nor a dot immediately
 /// followed by another digit (dropped, along with any dot that precedes it).
 ///
-/// Used only for native-syntax parsing (see
-/// [`NativeVersionConverter::from_native_constraint`] above); standard
-/// `vers:` strings must already be in canonical form (see [`FromStr`]).
-fn parse_lenient(s: &str) -> Result<IntDotVersion, VersError> {
+/// Used for native-syntax parsing (see
+/// [`NativeVersionConverter::from_native_constraint`] above) as well as for
+/// parsing the version being tested in
+/// [`VersionRange::contains`](crate::range::VersionRange::contains) (see
+/// [`DynamicVersionRange::contains`](crate::range::dynamic::DynamicVersionRange::contains)),
+/// since real-world version strings commonly include this kind of
+/// non-canonical variation. Standard `vers:` strings themselves must still
+/// already be in canonical form (see [`FromStr`]).
+pub(crate) fn parse_lenient(s: &str) -> Result<IntDotVersion, VersError> {
     let bytes = s.as_bytes();
 
     if bytes.is_empty() || !bytes[0].is_ascii_digit() {
@@ -585,10 +594,18 @@ mod tests {
         assert!(range.contains("1.5.0".to_string()).unwrap());
         assert!(range.contains("1.2".to_string()).unwrap());
         assert!(!range.contains("2.0".to_string()).unwrap());
-        // `contains` checks the tested version via strict parsing too (same
-        // as every other scheme in this crate), so a non-canonical version
-        // string is rejected rather than silently normalized.
-        assert!(range.contains("1.2beta".to_string()).is_err());
+    }
+
+    #[test]
+    fn dynamic_contains_parses_tested_version_leniently() {
+        // Unlike the range itself (which must be in canonical `vers:` form),
+        // the tested version passed to `contains` is parsed leniently:
+        // leading zeros and an ignored suffix are tolerated and normalized,
+        // not rejected.
+        let range: DynamicVersionRange = "vers:intdot/>=1.2|<2.0".parse().unwrap();
+        assert!(range.contains("1.2beta".to_string()).unwrap());
+        assert!(range.contains("01.5.0".to_string()).unwrap());
+        assert!(!range.contains("2.0beta".to_string()).unwrap());
     }
 
     #[test]
