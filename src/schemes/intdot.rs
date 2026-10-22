@@ -34,8 +34,7 @@
 //! is more permissive: it tolerates and normalizes leading zeros and ignored
 //! suffixes, since real-world version strings commonly include this kind of
 //! non-canonical variation. The same lenient parsing is used for the version
-//! being tested in
-//! [`DynamicVersionRange::contains`](crate::range::dynamic::DynamicVersionRange::contains):
+//! being tested in `DynamicVersionRange::contains`:
 //! only the vers string itself (the range) is required to be in canonical
 //! form.
 //!
@@ -257,8 +256,7 @@ fn is_canonical(s: &str) -> bool {
 /// Used for native-syntax parsing (see
 /// [`NativeVersionConverter::from_native_constraint`] above) as well as for
 /// parsing the version being tested in
-/// [`VersionRange::contains`](crate::range::VersionRange::contains) (see
-/// [`DynamicVersionRange::contains`](crate::range::dynamic::DynamicVersionRange::contains)),
+/// [`VersionRange::contains`](crate::range::VersionRange::contains),
 /// since real-world version strings commonly include this kind of
 /// non-canonical variation. Standard `vers:` strings themselves must still
 /// already be in canonical form (see [`FromStr`]).
