@@ -9,29 +9,14 @@
 
 use crate::{Comparator, VersError};
 use crate::{RESERVED_OPERATOR_TOKENS, VersVersionRange, is_ascii_vers_whitespace};
-use percent_encoding::percent_decode_str;
+use pct_str::PctStr;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::hash::Hash;
 use std::str::FromStr;
 
-fn has_only_valid_percent_triplets(s: &str) -> bool {
-    let bytes = s.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%' {
-            let is_valid_triplet = i + 2 < bytes.len()
-                && bytes[i + 1].is_ascii_hexdigit()
-                && bytes[i + 2].is_ascii_hexdigit();
-            if !is_valid_triplet {
-                return false;
-            }
-            i += 3;
-        } else {
-            i += 1;
-        }
-    }
-    true
+fn invalid_url_encoding_message(version: &str) -> String {
+    format!("Invalid URL encoding: {}", version)
 }
 
 /// Trait for version types that support native (scheme-specific) syntax.
@@ -343,33 +328,24 @@ impl<V: VersionType> VersionConstraint<V> {
 
         // Handle URL percent encoding if needed
         let version_str = if version.contains('%') {
-            if !has_only_valid_percent_triplets(version) {
-                return Err(VersError::InvalidConstraint(format!(
-                    "Invalid URL encoding: {}",
-                    version
+            let pct_str = PctStr::new(version)
+                .map_err(|_| VersError::InvalidConstraint(invalid_url_encoding_message(version)))?;
+            let decoded = pct_str.decode();
+
+            // A percent-encoded space ('%20') is the only ASCII whitespace
+            // permitted in a VERS string; any other whitespace/control
+            // character hidden behind percent encoding is just as invalid
+            // as a literal one.
+            if decoded
+                .bytes()
+                .any(|b| b != b' ' && is_ascii_vers_whitespace(b))
+            {
+                return Err(VersError::InvalidConstraint(invalid_url_encoding_message(
+                    version,
                 )));
             }
 
-            match percent_decode_str(version).decode_utf8() {
-                Ok(decoded) => {
-                    if decoded
-                        .bytes()
-                        .any(|b| b != b' ' && is_ascii_vers_whitespace(b))
-                    {
-                        return Err(VersError::InvalidConstraint(format!(
-                            "Invalid URL encoding: {}",
-                            version
-                        )));
-                    }
-                    decoded.to_string()
-                }
-                Err(_) => {
-                    return Err(VersError::InvalidConstraint(format!(
-                        "Invalid URL encoding: {}",
-                        version
-                    )));
-                }
-            }
+            decoded
         } else {
             version.to_string()
         };

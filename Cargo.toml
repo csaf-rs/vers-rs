@@ -20,7 +20,7 @@ wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:tsify", "dep:serde-wasm-bindgen"]
 
 [dependencies]
 thiserror = "2"
-percent-encoding = "2"
+pct-str = "3"
 semver = { version = "1", features = ["serde"] }
 derive_more = { version = "2", features = ["from_str", "display"] }
 wasm-bindgen = { version = "0.2.104", optional = true }
