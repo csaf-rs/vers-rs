@@ -740,6 +740,26 @@ mod tests {
     }
 
     #[test]
+    fn test_dynamic_serde_json_roundtrip_leading_zeros() {
+        // Unlike suffixes, leading zeros are normalized away at the *first*
+        // parse (per spec, `01.002` is non-canonical spelling of `1.2`), so
+        // the exact input spelling is not preserved. The parsed range is
+        // still stable across serde and re-parsing roundtrips.
+        let range: DynamicVersionRange = "vers:intdot/>=01.2|<2.0".parse().unwrap();
+        assert_eq!(range.to_string(), "vers:intdot/>=1.2|<2.0");
+
+        let json = serde_json::to_string(&range).unwrap();
+        let roundtripped: DynamicVersionRange = serde_json::from_str(&json).unwrap();
+        assert_eq!(range, roundtripped);
+        assert_eq!(roundtripped.to_string(), "vers:intdot/>=1.2|<2.0");
+
+        // Re-parsing the normalized display form is a fixpoint: no further
+        // drift is possible.
+        let reparsed: DynamicVersionRange = roundtripped.to_string().parse().unwrap();
+        assert_eq!(roundtripped, reparsed);
+    }
+
+    #[test]
     fn test_contains_simple() {
         let range: DynamicVersionRange = "vers:npm/1.2.3".parse().unwrap();
         assert!(range.contains("1.2.3".to_string()).unwrap());
