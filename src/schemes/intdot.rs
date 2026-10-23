@@ -141,9 +141,7 @@ impl FromStr for IntDotVersion {
     /// followed by a digit are simply part of the suffix, same as any
     /// other non-digit content (e.g. `1..beta`, or a bare trailing `1..`).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let bytes = s.as_bytes();
-
-        if bytes.is_empty() || !bytes[0].is_ascii_digit() {
+        if s.is_empty() || !s.as_bytes()[0].is_ascii_digit() {
             return Err(VersError::InvalidVersionFormat(
                 INTDOT_SCHEME.to_string(),
                 s.to_string(),
@@ -151,61 +149,42 @@ impl FromStr for IntDotVersion {
             ));
         }
 
-        let mut normalized = String::with_capacity(s.len());
-        let mut i = 0;
-        loop {
-            let start = i;
-            while i < bytes.len() && bytes[i].is_ascii_digit() {
-                i += 1;
+        let (numeric, suffix) = split_numeric_and_suffix(s);
+
+        // A run of consecutive dots at the numeric/suffix boundary that is
+        // immediately followed by a digit (e.g. the `..2` in `1..2`) would
+        // read as a segment separator with an empty segment in between, so
+        // it is rejected. Consecutive dots *not* followed by a digit are
+        // simply part of the suffix (e.g. `1..beta`, or a bare trailing
+        // `1..`).
+        if suffix.starts_with('.') {
+            let after_dots = suffix.trim_start_matches('.');
+            if after_dots.starts_with(|c: char| c.is_ascii_digit()) {
+                return Err(VersError::InvalidVersionFormat(
+                    INTDOT_SCHEME.to_string(),
+                    s.to_string(),
+                    "version must not contain consecutive dots".to_string(),
+                ));
             }
-            // Safe: `start..i` spans only ASCII digit bytes, so it's always a
-            // valid (and non-empty, on first entry guaranteed by the check
-            // above, and on later entries by the lookahead below) UTF-8 slice.
-            let segment = &s[start..i];
+        }
+
+        // Strip leading zeros within each numeric segment.
+        let mut normalized = String::with_capacity(s.len());
+        for segment in numeric.split('.') {
             let significant_digits = match segment.bytes().position(|b| b != b'0') {
                 Some(p) => &segment[p..],
                 None => "0",
             };
-
             if !normalized.is_empty() {
                 normalized.push('.');
             }
             normalized.push_str(significant_digits);
-
-            // Only continue past a dot when it's immediately followed by
-            // another digit; otherwise segment parsing stops here and
-            // everything from this point on (a trailing dot, a run of dots
-            // not followed by a digit, or any other character) is a suffix
-            // that is ignored for comparison. A dot immediately followed
-            // by another dot *and then* a digit is rejected, since that
-            // would otherwise be interpreted as a segment separator with an
-            // empty segment in between (e.g. `1..2`).
-            if i < bytes.len() && bytes[i] == b'.' {
-                if i + 1 < bytes.len() && bytes[i + 1] == b'.' {
-                    let mut dots_end = i + 1;
-                    while dots_end < bytes.len() && bytes[dots_end] == b'.' {
-                        dots_end += 1;
-                    }
-                    if dots_end < bytes.len() && bytes[dots_end].is_ascii_digit() {
-                        return Err(VersError::InvalidVersionFormat(
-                            INTDOT_SCHEME.to_string(),
-                            s.to_string(),
-                            "version must not contain consecutive dots".to_string(),
-                        ));
-                    }
-                } else if i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit() {
-                    i += 1;
-                    continue;
-                }
-            }
-            break;
         }
 
-        // Keep the suffix (everything from where segment parsing stopped)
-        // verbatim: `Eq`/`Ord`/`Hash` ignore it (see `significant`), but
-        // preserving it ensures that parsing, `Display`, and
-        // (de)serialization roundtrip.
-        normalized.push_str(&s[i..]);
+        // Keep the suffix verbatim: `Eq`/`Ord`/`Hash` ignore it (see
+        // `significant`), but preserving it ensures that parsing, `Display`,
+        // and (de)serialization roundtrip.
+        normalized.push_str(suffix);
 
         Ok(IntDotVersion(normalized))
     }
@@ -274,24 +253,21 @@ impl Ord for IntDotVersion {
     }
 }
 
-/// Returns the comparison/hash form of `s`: `s` with any ignored suffix
-/// removed and any trailing all-zero segments trimmed (keeping at least one
-/// segment), so that e.g. `"1.2.0"`, `"1.2.0.0"`, and `"1.2.0beta"` all
-/// reduce to `"1.2"`. The suffix is everything from the first character
-/// that is neither an ASCII digit nor a dot immediately followed by another
-/// digit, mirroring where [`FromStr`] stops consuming segments. `s` is
-/// assumed to already have no leading zeros per segment (guaranteed by
-/// [`FromStr`]).
+/// Splits `s` into its leading numeric part and the suffix that follows it.
 ///
-/// This is deliberately *not* used for `Display`/storage: an explicit
-/// trailing zero segment or a suffix is a valid spelling of a version (see
-/// the [module documentation](self)), and is preserved verbatim there. It's
-/// only `Eq`, `Ord`, and `Hash` that treat it as equivalent to the plain
-/// numeric form.
-fn significant(s: &str) -> &str {
-    // The numeric part spans ASCII digits and dots immediately followed by
-    // digits; scanning stops exactly where `FromStr` stops consuming
-    // segments, so `s[..i]` is the stored (normalized) numeric form.
+/// The numeric part spans ASCII digit segments separated by single dots,
+/// where a dot counts as a separator only when it is immediately followed
+/// by another digit; it ends at the first character that is neither a digit
+/// nor such a separator dot. Everything from that point on is the suffix.
+///
+/// This shared scan is the single source of truth for where the numeric
+/// part ends: [`FromStr`] keeps the suffix verbatim in the stored value,
+/// while [`significant`] strips it off for comparison, so the two can
+/// never drift apart. Note that this function does not validate the
+/// boundary: a run of consecutive dots at the split point that is
+/// immediately followed by a digit (e.g. the `..2` in `1..2`) lands in the
+/// suffix, and is rejected separately by `FromStr`.
+fn split_numeric_and_suffix(s: &str) -> (&str, &str) {
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
@@ -303,7 +279,23 @@ fn significant(s: &str) -> &str {
             break;
         }
     }
-    let mut result = &s[..i];
+    s.split_at(i)
+}
+
+/// Returns the comparison/hash form of `s`: `s` with any ignored suffix
+/// removed and any trailing all-zero segments trimmed (keeping at least one
+/// segment), so that e.g. `"1.2.0"`, `"1.2.0.0"`, and `"1.2.0beta"` all
+/// reduce to `"1.2"`. `s` is assumed to already have no leading zeros per
+/// segment (guaranteed by [`FromStr`]).
+///
+/// This is deliberately *not* used for `Display`/storage: an explicit
+/// trailing zero segment or a suffix is a valid spelling of a version (see
+/// the [module documentation](self)), and is preserved verbatim there. It's
+/// only `Eq`, `Ord`, and `Hash` that treat it as equivalent to the plain
+/// numeric form.
+fn significant(s: &str) -> &str {
+    let (numeric, _) = split_numeric_and_suffix(s);
+    let mut result = numeric;
 
     while let Some(dot) = result.rfind('.') {
         if &result[dot + 1..] == "0" {
