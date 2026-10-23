@@ -450,7 +450,6 @@ mod tests {
     #[case::npm_v_prefix("vers:npm/v1.2.3.4", VersError::InvalidVersionFormat("npm".to_string(), "v1.2.3.4".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
     #[case::deb_underscore("vers:deb/1.2_build", VersError::InvalidVersionFormat("deb".to_string(), "1.2_build".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
     #[case::cargo_missing_patch("vers:cargo/1.2", VersError::InvalidVersionFormat("cargo".to_string(), "1.2".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
-    #[case::cargo_invalid_percent_encoding("vers:cargo/%091.2.3", VersError::InvalidVersionFormat("cargo".to_string(), "1.2.3".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
     fn non_canonical_version_should_fail(#[case] input: &str, #[case] expected: VersError) {
         let result: Result<DynamicVersionRange, VersError> = input.parse();
         assert!(result.is_err());
@@ -498,7 +497,15 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0%3X1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidVersionFormat(_, _, _));
+        assert_matches!(err, VersError::InvalidConstraint(_));
+    }
+
+    #[test]
+    fn percent_encoded_whitespace_other_than_space_should_fail() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:cargo/%091.2.3".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_matches!(err, VersError::InvalidConstraint(_));
     }
 
     #[test]

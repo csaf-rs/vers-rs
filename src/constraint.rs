@@ -8,12 +8,31 @@
 //! considered within a version range.
 
 use crate::{Comparator, VersError};
-use crate::{RESERVED_OPERATOR_TOKENS, VersVersionRange};
+use crate::{RESERVED_OPERATOR_TOKENS, VersVersionRange, is_ascii_vers_whitespace};
 use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::hash::Hash;
 use std::str::FromStr;
+
+fn has_only_valid_percent_triplets(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let is_valid_triplet = i + 2 < bytes.len()
+                && bytes[i + 1].is_ascii_hexdigit()
+                && bytes[i + 2].is_ascii_hexdigit();
+            if !is_valid_triplet {
+                return false;
+            }
+            i += 3;
+        } else {
+            i += 1;
+        }
+    }
+    true
+}
 
 /// Trait for version types that support native (scheme-specific) syntax.
 ///
@@ -324,8 +343,26 @@ impl<V: VersionType> VersionConstraint<V> {
 
         // Handle URL percent encoding if needed
         let version_str = if version.contains('%') {
+            if !has_only_valid_percent_triplets(version) {
+                return Err(VersError::InvalidConstraint(format!(
+                    "Invalid URL encoding: {}",
+                    version
+                )));
+            }
+
             match percent_decode_str(version).decode_utf8() {
-                Ok(decoded) => decoded.to_string(),
+                Ok(decoded) => {
+                    if decoded
+                        .bytes()
+                        .any(|b| b != b' ' && is_ascii_vers_whitespace(b))
+                    {
+                        return Err(VersError::InvalidConstraint(format!(
+                            "Invalid URL encoding: {}",
+                            version
+                        )));
+                    }
+                    decoded.to_string()
+                }
                 Err(_) => {
                     return Err(VersError::InvalidConstraint(format!(
                         "Invalid URL encoding: {}",
@@ -519,5 +556,45 @@ mod native_version_converter_tests {
 
         let constraint = SemVer::from_native_constraint("*").unwrap();
         assert_eq!(constraint.comparator, Comparator::Any);
+    }
+}
+
+#[cfg(test)]
+mod percent_encoding_tests {
+    use super::*;
+    use crate::schemes::intdot::IntDotVersion;
+
+    #[test]
+    fn percent_encoded_tab_is_rejected() {
+        let result = VersionConstraint::<IntDotVersion>::parse("1%092");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn percent_encoded_newline_is_rejected() {
+        let result = VersionConstraint::<IntDotVersion>::parse("1%0A2");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn incomplete_percent_triplet_is_rejected() {
+        for invalid in ["1%1", "1%", "1%1x"] {
+            let result = VersionConstraint::<IntDotVersion>::parse(invalid);
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn non_hex_percent_triplet_is_rejected() {
+        for invalid in ["1%zz2", "1%g12", "1%1g2"] {
+            let result = VersionConstraint::<IntDotVersion>::parse(invalid);
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn valid_percent_triplet_still_decodes() {
+        let constraint = VersionConstraint::<IntDotVersion>::parse("1%252").unwrap();
+        assert_eq!(constraint.version.to_string(), "1");
     }
 }
