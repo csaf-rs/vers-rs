@@ -12,6 +12,12 @@
 //! - Interpretation of the version stops at the first character that is
 //!   neither a digit nor a dot; everything from that point on is an ignored
 //!   suffix (e.g. the `beta` in `1.2beta`).
+//! - Consecutive dots are rejected as an error only when immediately
+//!   followed by a digit (e.g. `1..2`), since that would otherwise be
+//!   interpreted as a segment separator with an empty segment in between.
+//!   Consecutive dots not followed by a digit are simply part of an
+//!   ignored suffix, like any other non-digit content (e.g. `1..`,
+//!   `1..beta`).
 //!
 //! This implementation additionally follows the VERS test suite's "recommended"
 //! semantics: a missing trailing segment is equivalent to a zero segment, so
@@ -115,6 +121,14 @@ impl FromStr for IntDotVersion {
     /// equally to standard `vers:intdot/...` strings, native-syntax parsing,
     /// and the version being tested in
     /// [`VersionRange::contains`](crate::range::VersionRange::contains).
+    ///
+    /// Consecutive dots are rejected as an error only when they are
+    /// immediately followed by another digit, i.e. when they would
+    /// otherwise be interpreted as a segment separator with an empty
+    /// segment in between (e.g. `1..2`). Consecutive dots that are *not*
+    /// followed by a digit are simply part of an ignored suffix, same as
+    /// any other non-digit content (e.g. `1..beta`, or a bare trailing
+    /// `1..`).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let bytes = s.as_bytes();
 
@@ -149,12 +163,30 @@ impl FromStr for IntDotVersion {
 
             // Only continue past a dot when it's immediately followed by
             // another digit; otherwise everything from here on (a trailing
-            // dot, a run of dots, or any other character) is an ignored suffix.
-            if i + 1 < bytes.len() && bytes[i] == b'.' && bytes[i + 1].is_ascii_digit() {
-                i += 1;
-            } else {
-                break;
+            // dot, a run of dots not followed by a digit, or any other
+            // character) is an ignored suffix. A dot immediately followed
+            // by another dot *and then* a digit is rejected, since that
+            // would otherwise be interpreted as a segment separator with an
+            // empty segment in between (e.g. `1..2`).
+            if i < bytes.len() && bytes[i] == b'.' {
+                if i + 1 < bytes.len() && bytes[i + 1] == b'.' {
+                    let mut dots_end = i + 1;
+                    while dots_end < bytes.len() && bytes[dots_end] == b'.' {
+                        dots_end += 1;
+                    }
+                    if dots_end < bytes.len() && bytes[dots_end].is_ascii_digit() {
+                        return Err(VersError::InvalidVersionFormat(
+                            INTDOT_SCHEME.to_string(),
+                            s.to_string(),
+                            "version must not contain consecutive dots".to_string(),
+                        ));
+                    }
+                } else if i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit() {
+                    i += 1;
+                    continue;
+                }
             }
+            break;
         }
 
         Ok(IntDotVersion(normalized))
@@ -261,6 +293,8 @@ mod tsify_decl_check {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
     use crate::Comparator;
     use crate::range::VersionRange;
@@ -289,11 +323,46 @@ mod tests {
     }
 
     #[test]
+    fn parsing_rejects_consecutive_dots_followed_by_a_digit() {
+        // Consecutive dots immediately followed by a digit would otherwise
+        // be interpreted as a segment separator with an empty segment in
+        // between, so they're rejected.
+        for invalid in ["1..2", "1...2", "1.2..3"] {
+            assert!(
+                IntDotVersion::from_str(invalid).is_err(),
+                "expected {invalid:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn parsing_allows_consecutive_dots_in_an_ignored_suffix() {
+        // Consecutive dots *not* followed by a digit are just part of an
+        // ignored suffix, same as any other non-digit content.
+        assert_eq!(IntDotVersion::from_str("1..").unwrap().to_string(), "1");
+        assert_eq!(
+            IntDotVersion::from_str("1.2.3..").unwrap().to_string(),
+            "1.2.3"
+        );
+        assert_eq!(IntDotVersion::from_str("1..beta").unwrap().to_string(), "1");
+    }
+
+    #[test]
     fn standard_vers_string_accepts_non_normalized_version() {
         // There is no separate canonical form for `intdot`, so standard
         // `vers:` strings are parsed just as leniently as native syntax.
         let result: Result<DynamicVersionRange, VersError> = "vers:intdot/01.2".parse();
         assert!(result.is_ok());
+    }
+
+    #[rstest]
+    #[case("1.2.a", "1.2")]
+    #[case("1.2.3a", "1.2.3")]
+    #[case("1.a.3", "1")]
+    #[case("1.2a.3", "1.2")]
+    fn non_digit_stops_parsing(#[case] input: &str, #[case] expected: &str) {
+        let result = IntDotVersion::from_str(input).unwrap();
+        assert_eq!(result.0, expected);
     }
 
     #[test]
@@ -344,9 +413,8 @@ mod tests {
     }
 
     #[test]
-    fn parsing_trailing_dot_and_double_dot_stop_interpretation() {
+    fn parsing_trailing_dot_stops_interpretation() {
         assert_eq!(IntDotVersion::from_str("1.2.").unwrap().to_string(), "1.2");
-        assert_eq!(IntDotVersion::from_str("1..2").unwrap().to_string(), "1");
         assert_eq!(
             IntDotVersion::from_str("1.2.beta").unwrap().to_string(),
             "1.2"
