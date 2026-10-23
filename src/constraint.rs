@@ -8,12 +8,16 @@
 //! considered within a version range.
 
 use crate::{Comparator, VersError};
-use crate::{RESERVED_OPERATOR_TOKENS, VersVersionRange};
-use percent_encoding::percent_decode_str;
+use crate::{RESERVED_OPERATOR_TOKENS, VersVersionRange, is_ascii_vers_whitespace};
+use pct_str::PctStr;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
 use std::hash::Hash;
 use std::str::FromStr;
+
+fn invalid_url_encoding_message(version: &str) -> String {
+    format!("Invalid URL encoding: {}", version)
+}
 
 /// Trait for version types that support native (scheme-specific) syntax.
 ///
@@ -92,6 +96,17 @@ where
     /// version).
     fn native_wildcard() -> Option<&'static str> {
         Some("*")
+    }
+
+    /// Whether a native constraint with no recognized operator token should
+    /// fall back to an implicit-equal bare version, matching standard vers
+    /// syntax (e.g. `"1.2.3"` means `"=1.2.3"`).
+    ///
+    /// Defaults to `true`. Override to return `false` for schemes whose
+    /// native syntax always requires an explicit operator (e.g. Debian
+    /// version relations have no bare-version/implicit-equal form).
+    fn native_allows_implicit_equal() -> bool {
+        true
     }
 
     /// Parse a native range string into a fully parsed `VersVersionRange`.
@@ -175,6 +190,11 @@ where
 
             let version = version_str.parse::<Self>().map_err(Into::into)?;
             Ok(VersionConstraint::new(comparator, version))
+        } else if Self::native_allows_implicit_equal() {
+            // No operator token matched: treat the whole (trimmed) string as
+            // an implicit-equal bare version, matching standard vers syntax.
+            let version = raw.parse::<Self>().map_err(Into::into)?;
+            Ok(VersionConstraint::new(Comparator::Equal, version))
         } else {
             Err(VersError::InvalidConstraint(raw.into()))
         }
@@ -308,15 +328,24 @@ impl<V: VersionType> VersionConstraint<V> {
 
         // Handle URL percent encoding if needed
         let version_str = if version.contains('%') {
-            match percent_decode_str(version).decode_utf8() {
-                Ok(decoded) => decoded.to_string(),
-                Err(_) => {
-                    return Err(VersError::InvalidConstraint(format!(
-                        "Invalid URL encoding: {}",
-                        version
-                    )));
-                }
+            let pct_str = PctStr::new(version)
+                .map_err(|_| VersError::InvalidConstraint(invalid_url_encoding_message(version)))?;
+            let decoded = pct_str.decode();
+
+            // A percent-encoded space ('%20') is the only ASCII whitespace
+            // permitted in a VERS string; any other whitespace/control
+            // character hidden behind percent encoding is just as invalid
+            // as a literal one.
+            if decoded
+                .bytes()
+                .any(|b| b != b' ' && is_ascii_vers_whitespace(b))
+            {
+                return Err(VersError::InvalidConstraint(invalid_url_encoding_message(
+                    version,
+                )));
             }
+
+            decoded
         } else {
             version.to_string()
         };
@@ -417,6 +446,15 @@ mod native_version_converter_tests {
     }
 
     #[test]
+    fn no_matching_operator_falls_back_to_implicit_equality() {
+        // No operator token matches, but the whole string still parses as a
+        // bare version, so it's treated as an implicit-equal constraint.
+        let constraint = TestVersion::from_native_constraint("42").unwrap();
+        assert_eq!(constraint.comparator, Comparator::Equal);
+        assert_eq!(constraint.version, TestVersion(42));
+    }
+
+    #[test]
     fn standard_vers_operators_are_not_recognized_for_this_scheme() {
         // ">=" isn't in this scheme's operator table, so it's treated as part
         // of an implicit-equal version string, which then fails to parse.
@@ -430,6 +468,52 @@ mod native_version_converter_tests {
         // just an (invalid) version string.
         let result = TestVersion::from_native_constraint("*");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn implicit_equal_fallback_can_be_disabled() {
+        /// A scheme requiring an explicit operator, with no bare-version form
+        /// (e.g. Debian version relations).
+        #[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+        struct ExplicitOnlyVersion(u32);
+
+        impl Display for ExplicitOnlyVersion {
+            fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+                write!(f, "{}", self.0)
+            }
+        }
+
+        impl FromStr for ExplicitOnlyVersion {
+            type Err = VersError;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                s.parse::<u32>().map(ExplicitOnlyVersion).map_err(|_| {
+                    VersError::InvalidVersionFormat(
+                        "test".to_string(),
+                        s.to_string(),
+                        "not a number".to_string(),
+                    )
+                })
+            }
+        }
+
+        impl NativeVersionConverter for ExplicitOnlyVersion {
+            const SCHEME_NAME: &'static str = "test-explicit-only";
+
+            fn native_allows_implicit_equal() -> bool {
+                false
+            }
+        }
+
+        // Even though "42" alone would parse fine as a bare version, the
+        // scheme disables the implicit-equal fallback, so it's rejected.
+        let result = ExplicitOnlyVersion::from_native_constraint("42");
+        assert!(result.is_err());
+
+        // An explicit operator still works.
+        let constraint = ExplicitOnlyVersion::from_native_constraint(">=42").unwrap();
+        assert_eq!(constraint.comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(constraint.version, ExplicitOnlyVersion(42));
     }
 
     #[test]
@@ -448,5 +532,47 @@ mod native_version_converter_tests {
 
         let constraint = SemVer::from_native_constraint("*").unwrap();
         assert_eq!(constraint.comparator, Comparator::Any);
+    }
+}
+
+#[cfg(test)]
+mod percent_encoding_tests {
+    use super::*;
+    use crate::schemes::intdot::IntDotVersion;
+
+    #[test]
+    fn percent_encoded_tab_is_rejected() {
+        let result = VersionConstraint::<IntDotVersion>::parse("1%092");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn percent_encoded_newline_is_rejected() {
+        let result = VersionConstraint::<IntDotVersion>::parse("1%0A2");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn incomplete_percent_triplet_is_rejected() {
+        for invalid in ["1%1", "1%", "1%1x"] {
+            let result = VersionConstraint::<IntDotVersion>::parse(invalid);
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn non_hex_percent_triplet_is_rejected() {
+        for invalid in ["1%zz2", "1%g12", "1%1g2"] {
+            let result = VersionConstraint::<IntDotVersion>::parse(invalid);
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    fn valid_percent_triplet_still_decodes() {
+        let constraint = VersionConstraint::<IntDotVersion>::parse("1%252").unwrap();
+        // "%25" decodes to '%', which ends the numeric part and is kept as a
+        // suffix (ignored for comparison).
+        assert_eq!(constraint.version.to_string(), "1%2");
     }
 }

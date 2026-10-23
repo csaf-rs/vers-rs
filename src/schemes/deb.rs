@@ -47,6 +47,12 @@ impl NativeVersionConverter for DebVersion {
         None
     }
 
+    /// Debian version relations always require an explicit operator; there
+    /// is no bare-version/implicit-equal form.
+    fn native_allows_implicit_equal() -> bool {
+        false
+    }
+
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw
             .bytes()
