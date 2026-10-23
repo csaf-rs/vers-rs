@@ -729,6 +729,7 @@ mod tests {
             "vers:deb/>=1.0-0",
             "vers:cargo/>=1.0.0|<2.0.0",
             "vers:intdot/>=1.2|<2.0",
+            "vers:intdot/>=1.2beta|<2.0alpha",
         ] {
             let range: DynamicVersionRange = input.parse().unwrap();
             let json = serde_json::to_string(&range).unwrap();

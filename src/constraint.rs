@@ -571,6 +571,8 @@ mod percent_encoding_tests {
     #[test]
     fn valid_percent_triplet_still_decodes() {
         let constraint = VersionConstraint::<IntDotVersion>::parse("1%252").unwrap();
-        assert_eq!(constraint.version.to_string(), "1");
+        // "%25" decodes to '%', which ends the numeric part and is kept as a
+        // suffix (ignored for comparison).
+        assert_eq!(constraint.version.to_string(), "1%2");
     }
 }

@@ -10,14 +10,15 @@
 //!   separated by dots (e.g. `10.234.5.12`).
 //! - Leading zeros in each segment are ignored (`01.002` == `1.2`).
 //! - Interpretation of the version stops at the first character that is
-//!   neither a digit nor a dot; everything from that point on is an ignored
-//!   suffix (e.g. the `beta` in `1.2beta`).
+//!   neither a digit nor a dot; everything from that point on is a suffix
+//!   that is ignored for comparison (e.g. the `beta` in `1.2beta`), but
+//!   kept verbatim so that versions roundtrip through display and
+//!   (de)serialization.
 //! - Consecutive dots are rejected as an error only when immediately
 //!   followed by a digit (e.g. `1..2`), since that would otherwise be
 //!   interpreted as a segment separator with an empty segment in between.
-//!   Consecutive dots not followed by a digit are simply part of an
-//!   ignored suffix, like any other non-digit content (e.g. `1..`,
-//!   `1..beta`).
+//!   Consecutive dots not followed by a digit are simply part of the
+//!   suffix, like any other non-digit content (e.g. `1..`, `1..beta`).
 //!
 //! This implementation additionally follows the VERS test suite's "recommended"
 //! semantics: a missing trailing segment is equivalent to a zero segment, so
@@ -28,10 +29,10 @@
 //!
 //! Unlike some other schemes in this crate (e.g. `SemVer`), the VERS
 //! specification does not define a stricter "canonical form" for `intdot`
-//! versions beyond the lenient rules above. Leading zeros and an ignored
-//! suffix are therefore tolerated and normalized unconditionally by
-//! [`FromStr`], both for standard `vers:intdot/...` strings and for
-//! native-syntax parsing (via
+//! versions beyond the lenient rules above. Leading zeros are therefore
+//! stripped unconditionally by [`FromStr`], while a suffix is kept verbatim
+//! (it only affects comparison), both for standard `vers:intdot/...`
+//! strings and for native-syntax parsing (via
 //! [`NativeVersionConverter::from_native_constraint`], used by e.g.
 //! [`DynamicVersionRange::parse_native`](crate::range::dynamic::DynamicVersionRange::parse_native)),
 //! as well as for the version being tested in `DynamicVersionRange::contains`.
@@ -59,11 +60,12 @@ pub const INTDOT_SCHEME: &str = "intdot";
 /// An `intdot` version: one or more non-negative integers separated by dots.
 ///
 /// The value stored internally is the normalized string produced by parsing
-/// (see [`FromStr`]): leading zeros per segment are stripped and any
-/// trailing suffix is dropped. `Eq`, `Ord`, and `Hash` are implemented
-/// manually so that a missing trailing segment is treated as equivalent to
-/// an explicit zero segment, without requiring that equivalence to be
-/// reflected in storage.
+/// (see [`FromStr`]): leading zeros per segment are stripped, while any
+/// trailing suffix is kept verbatim (it is ignored for comparison, but
+/// retained so that parsing, display, and (de)serialization roundtrip).
+/// `Eq`, `Ord`, and `Hash` are implemented manually so that a missing
+/// trailing segment is treated as equivalent to an explicit zero segment,
+/// without requiring that equivalence to be reflected in storage.
 ///
 /// # Examples
 ///
@@ -71,10 +73,20 @@ pub const INTDOT_SCHEME: &str = "intdot";
 /// use vers_rs::schemes::intdot::IntDotVersion;
 /// use std::str::FromStr;
 ///
-/// // Parsing tolerates leading zeros and an ignored suffix (there is no
-/// // separate, stricter canonical form for this scheme).
+/// // Parsing tolerates leading zeros and keeps any suffix verbatim (there
+/// // is no separate, stricter canonical form for this scheme).
 /// let a = IntDotVersion::from_str("1.2.3").unwrap();
 /// assert_eq!(a, IntDotVersion::from_str("01.2.3").unwrap());
+///
+/// // The suffix is kept for display, but ignored for comparison.
+/// assert_eq!(
+///     IntDotVersion::from_str("1.2beta").unwrap().to_string(),
+///     "1.2beta"
+/// );
+/// assert_eq!(
+///     IntDotVersion::from_str("1.2beta").unwrap(),
+///     IntDotVersion::from_str("1.2").unwrap()
+/// );
 ///
 /// // A missing trailing segment is equivalent to an explicit zero segment.
 /// assert_eq!(a, IntDotVersion::from_str("1.2.3.0").unwrap());
@@ -115,20 +127,19 @@ impl FromStr for IntDotVersion {
     /// Parses `s` into an `intdot` version, tolerating non-canonical input:
     /// leading zeros per segment (stripped), and any suffix starting at the
     /// first character that is neither an ASCII digit nor a dot immediately
-    /// followed by another digit (dropped, along with any dot that precedes
-    /// it). There is no separate, stricter canonical form for this scheme
-    /// (see the [module documentation](self)), so this leniency applies
-    /// equally to standard `vers:intdot/...` strings, native-syntax parsing,
-    /// and the version being tested in
+    /// followed by another digit (kept verbatim, but ignored for comparison;
+    /// see `Eq`/`Ord`/`Hash`). There is no separate, stricter canonical form
+    /// for this scheme (see the [module documentation](self)), so this
+    /// leniency applies equally to standard `vers:intdot/...` strings,
+    /// native-syntax parsing, and the version being tested in
     /// [`VersionRange::contains`](crate::range::VersionRange::contains).
     ///
     /// Consecutive dots are rejected as an error only when they are
     /// immediately followed by another digit, i.e. when they would
     /// otherwise be interpreted as a segment separator with an empty
     /// segment in between (e.g. `1..2`). Consecutive dots that are *not*
-    /// followed by a digit are simply part of an ignored suffix, same as
-    /// any other non-digit content (e.g. `1..beta`, or a bare trailing
-    /// `1..`).
+    /// followed by a digit are simply part of the suffix, same as any
+    /// other non-digit content (e.g. `1..beta`, or a bare trailing `1..`).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let bytes = s.as_bytes();
 
@@ -162,9 +173,10 @@ impl FromStr for IntDotVersion {
             normalized.push_str(significant_digits);
 
             // Only continue past a dot when it's immediately followed by
-            // another digit; otherwise everything from here on (a trailing
-            // dot, a run of dots not followed by a digit, or any other
-            // character) is an ignored suffix. A dot immediately followed
+            // another digit; otherwise segment parsing stops here and
+            // everything from this point on (a trailing dot, a run of dots
+            // not followed by a digit, or any other character) is a suffix
+            // that is ignored for comparison. A dot immediately followed
             // by another dot *and then* a digit is rejected, since that
             // would otherwise be interpreted as a segment separator with an
             // empty segment in between (e.g. `1..2`).
@@ -188,6 +200,12 @@ impl FromStr for IntDotVersion {
             }
             break;
         }
+
+        // Keep the suffix (everything from where segment parsing stopped)
+        // verbatim: `Eq`/`Ord`/`Hash` ignore it (see `significant`), but
+        // preserving it ensures that parsing, `Display`, and
+        // (de)serialization roundtrip.
+        normalized.push_str(&s[i..]);
 
         Ok(IntDotVersion(normalized))
     }
@@ -256,17 +274,37 @@ impl Ord for IntDotVersion {
     }
 }
 
-/// Returns the comparison/hash form of `s`: `s` with any trailing all-zero
-/// segments trimmed (keeping at least one segment), so that e.g. `"1.2.0"`
-/// and `"1.2.0.0"` both reduce to `"1.2"`. `s` is assumed to already have no
-/// leading zeros per segment (guaranteed by [`FromStr`]).
+/// Returns the comparison/hash form of `s`: `s` with any ignored suffix
+/// removed and any trailing all-zero segments trimmed (keeping at least one
+/// segment), so that e.g. `"1.2.0"`, `"1.2.0.0"`, and `"1.2.0beta"` all
+/// reduce to `"1.2"`. The suffix is everything from the first character
+/// that is neither an ASCII digit nor a dot immediately followed by another
+/// digit, mirroring where [`FromStr`] stops consuming segments. `s` is
+/// assumed to already have no leading zeros per segment (guaranteed by
+/// [`FromStr`]).
 ///
 /// This is deliberately *not* used for `Display`/storage: an explicit
-/// trailing zero segment is a valid, distinct spelling of a version (see the
-/// [module documentation](self)), and is preserved verbatim there. It's only
-/// `Eq`, `Ord`, and `Hash` that treat it as equivalent to the shorter form.
+/// trailing zero segment or a suffix is a valid spelling of a version (see
+/// the [module documentation](self)), and is preserved verbatim there. It's
+/// only `Eq`, `Ord`, and `Hash` that treat it as equivalent to the plain
+/// numeric form.
 fn significant(s: &str) -> &str {
-    let mut result = s;
+    // The numeric part spans ASCII digits and dots immediately followed by
+    // digits; scanning stops exactly where `FromStr` stops consuming
+    // segments, so `s[..i]` is the stored (normalized) numeric form.
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_digit() {
+            i += 1;
+        } else if bytes[i] == b'.' && i + 1 < bytes.len() && bytes[i + 1].is_ascii_digit() {
+            i += 2;
+        } else {
+            break;
+        }
+    }
+    let mut result = &s[..i];
+
     while let Some(dot) = result.rfind('.') {
         if &result[dot + 1..] == "0" {
             result = &result[..dot];
@@ -337,14 +375,18 @@ mod tests {
 
     #[test]
     fn parsing_allows_consecutive_dots_in_an_ignored_suffix() {
-        // Consecutive dots *not* followed by a digit are just part of an
-        // ignored suffix, same as any other non-digit content.
-        assert_eq!(IntDotVersion::from_str("1..").unwrap().to_string(), "1");
+        // Consecutive dots *not* followed by a digit are just part of the
+        // suffix, same as any other non-digit content: kept verbatim, but
+        // ignored for comparison.
+        assert_eq!(IntDotVersion::from_str("1..").unwrap().to_string(), "1..");
         assert_eq!(
             IntDotVersion::from_str("1.2.3..").unwrap().to_string(),
-            "1.2.3"
+            "1.2.3.."
         );
-        assert_eq!(IntDotVersion::from_str("1..beta").unwrap().to_string(), "1");
+        assert_eq!(
+            IntDotVersion::from_str("1..beta").unwrap().to_string(),
+            "1..beta"
+        );
     }
 
     #[test]
@@ -356,11 +398,13 @@ mod tests {
     }
 
     #[rstest]
-    #[case("1.2.a", "1.2")]
-    #[case("1.2.3a", "1.2.3")]
-    #[case("1.a.3", "1")]
-    #[case("1.2a.3", "1.2")]
-    fn non_digit_stops_parsing(#[case] input: &str, #[case] expected: &str) {
+    #[case("1.2.a", "1.2.a")]
+    #[case("1.2.3a", "1.2.3a")]
+    #[case("1.a.3", "1.a.3")]
+    #[case("1.2a.3", "1.2a.3")]
+    fn non_digit_stops_segment_parsing_keeps_suffix(#[case] input: &str, #[case] expected: &str) {
+        // A non-digit stops segment parsing, but the remaining suffix is
+        // kept verbatim (and ignored for comparison).
         let result = IntDotVersion::from_str(input).unwrap();
         assert_eq!(result.0, expected);
     }
@@ -396,28 +440,33 @@ mod tests {
     }
 
     #[test]
-    fn parsing_ignores_suffix_after_first_non_digit_non_dot_char() {
+    fn suffix_after_first_non_digit_non_dot_char_is_kept_for_display() {
+        // The suffix does not contribute segments, but it is preserved
+        // verbatim so that display and (de)serialization roundtrip; only
+        // comparison ignores it.
         assert_eq!(
             IntDotVersion::from_str("1.2beta").unwrap().to_string(),
-            "1.2"
+            "1.2beta"
         );
         assert_eq!(
             IntDotVersion::from_str("1.10alpha").unwrap().to_string(),
-            "1.10"
+            "1.10alpha"
         );
         assert_eq!(
             IntDotVersion::from_str("1.3rc1").unwrap().to_string(),
-            "1.3"
+            "1.3rc1"
         );
-        assert_eq!(IntDotVersion::from_str("10e2").unwrap().to_string(), "10");
+        assert_eq!(IntDotVersion::from_str("10e2").unwrap().to_string(), "10e2");
     }
 
     #[test]
     fn parsing_trailing_dot_stops_interpretation() {
-        assert_eq!(IntDotVersion::from_str("1.2.").unwrap().to_string(), "1.2");
+        // A trailing dot (or a dot followed by a non-digit) ends the numeric
+        // part; the remainder is kept verbatim as a suffix.
+        assert_eq!(IntDotVersion::from_str("1.2.").unwrap().to_string(), "1.2.");
         assert_eq!(
             IntDotVersion::from_str("1.2.beta").unwrap().to_string(),
-            "1.2"
+            "1.2.beta"
         );
     }
 
@@ -426,8 +475,8 @@ mod tests {
         // "١٠" is Arabic-Indic for "10"; it must not be treated as a digit.
         assert!(IntDotVersion::from_str("١٠").is_err());
         // The numeric prefix stops before non-ASCII characters, same as any
-        // other non-digit, non-dot byte.
-        assert_eq!(IntDotVersion::from_str("1.٢").unwrap().to_string(), "1");
+        // other non-digit, non-dot byte; the rest is kept as a suffix.
+        assert_eq!(IntDotVersion::from_str("1.٢").unwrap().to_string(), "1.٢");
     }
 
     // --- Equality (ported from the official VERS intdot test suite) -------
@@ -507,8 +556,10 @@ mod tests {
             .map(|s| IntDotVersion::from_str(s).unwrap())
             .collect();
         versions.sort();
+        // Sorting is by the numeric segments only; the kept suffixes show up
+        // verbatim in the display form.
         let sorted: Vec<String> = versions.iter().map(ToString::to_string).collect();
-        assert_eq!(sorted, vec!["1.2", "1.3", "1.10"]);
+        assert_eq!(sorted, vec!["1.2beta", "1.3rc1", "1.10alpha"]);
     }
 
     #[test]
@@ -641,8 +692,12 @@ mod tests {
     }
 
     #[test]
-    fn typed_serde_strips_suffixed_version() {
+    fn typed_serde_keeps_suffixed_version() {
+        // The suffix is kept verbatim across (de)serialization so that
+        // versions roundtrip; only comparison ignores it.
         let v: IntDotVersion = serde_json::from_str("\"1.2beta\"").unwrap();
-        assert_eq!(v.to_string(), "1.2");
+        assert_eq!(v.to_string(), "1.2beta");
+        let json = serde_json::to_string(&v).unwrap();
+        assert_eq!(json, "\"1.2beta\"");
     }
 }
