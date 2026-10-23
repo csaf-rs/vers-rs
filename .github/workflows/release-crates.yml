@@ -9,6 +9,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    uses: csaf-rs/shared-workflows/.github/workflows/cargo-publish.yml@a55e51a118eb3d0beae0fed4a616eec29dc01ca2 # v1.10.0
+    uses: csaf-rs/shared-workflows/.github/workflows/cargo-publish.yml@c2f5f2066f1d96c12c1e33a8dea1fceb5eb37366 # v1.12.0
     with:
       environment: release

@@ -1,8 +1,9 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
-use crate::schemes::deb::DebVersion;
-use crate::schemes::semver::SemVer;
-use crate::{VersError, VersVersionRange, VersionConstraint};
+use crate::schemes::{cargo::CargoVersion, deb::DebVersion, semver::SemVer};
+use crate::{
+    VersError, VersVersionRange, VersionConstraint, is_ascii_vers_whitespace, is_registered_scheme,
+};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -22,6 +23,8 @@ enum DynamicVersionRangeInner {
     SemVer(VersVersionRange<SemVer>),
     /// Debian dpkg-style versioning ("deb" scheme)
     Deb(VersVersionRange<DebVersion>),
+    /// Cargo-based range ("cargo" scheme)
+    Cargo(VersVersionRange<CargoVersion>),
 }
 
 /// A dynamic version range that automatically detects the versioning scheme.
@@ -42,10 +45,13 @@ enum DynamicVersionRangeInner {
 /// // Parse ranges with different schemes
 /// let npm_range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
 /// let semver_range: DynamicVersionRange = "vers:semver/>=1.0.0|<2.0.0".parse().unwrap();
+/// let cargo_range: DynamicVersionRange = "vers:cargo/>=1.0.0|<2.0.0".parse().unwrap();
 ///
 /// // Check if versions are contained
 /// assert!(npm_range.contains("1.5.0".to_string()).unwrap());
 /// assert!(!npm_range.contains("2.0.0".to_string()).unwrap());
+/// assert!(semver_range.contains("1.5.0".to_string()).unwrap());
+/// assert!(!cargo_range.contains("2.0.0".to_string()).unwrap());
 /// ```
 #[derive(Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -55,7 +61,9 @@ enum DynamicVersionRangeInner {
 // would otherwise infer from this struct's fields. Override the generated TS type to match.
 #[cfg_attr(
     feature = "wasm",
-    tsify(type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion>")
+    tsify(
+        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion>"
+    )
 )]
 pub struct DynamicVersionRange {
     inner: DynamicVersionRangeInner,
@@ -89,6 +97,7 @@ macro_rules! dispatch_inner {
         match $inner {
             DynamicVersionRangeInner::SemVer($range) => $expr,
             DynamicVersionRangeInner::Deb($range) => $expr,
+            DynamicVersionRangeInner::Cargo($range) => $expr,
         }
     };
 }
@@ -120,11 +129,18 @@ impl DynamicVersionRange {
     /// assert!(range.contains("0.9".to_string()).unwrap());
     /// ```
     pub fn parse_native(scheme: &str, raw: &str) -> Result<Self, VersError> {
+        if !is_registered_scheme(scheme) {
+            return Err(VersError::UnknownVersioningScheme(scheme.to_string()));
+        }
+
         let inner = match scheme {
             "semver" | "npm" => {
                 DynamicVersionRangeInner::SemVer(SemVer::from_native_string(scheme, raw)?)
             }
             "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(scheme, raw)?),
+            "cargo" => {
+                DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
+            }
             _ => return Err(VersError::UnsupportedVersioningScheme(scheme.to_string())),
         };
 
@@ -138,19 +154,10 @@ impl DynamicVersionRange {
     ///
     /// This is a helper function used internally to determine which version type
     /// to use when parsing the range.
-    fn extract_versioning_scheme(s: &str) -> Result<String, VersError> {
-        // Remove all spaces and tabs
-        let s = s.replace(|c: char| c.is_whitespace(), "");
-
+    pub(crate) fn extract_versioning_scheme(s: &str) -> Result<(String, String), VersError> {
         // Split on colon
         let parts: Vec<&str> = s.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            return Err(VersError::InvalidScheme);
-        }
-
-        // Validate URI scheme
-        let scheme = parts[0];
-        if scheme != "vers" {
+        if parts.len() != 2 || parts[0] != "vers" {
             return Err(VersError::InvalidScheme);
         }
 
@@ -161,12 +168,12 @@ impl DynamicVersionRange {
         }
 
         // Get versioning scheme
-        let versioning_scheme = specifier_parts[0].to_lowercase();
+        let versioning_scheme = specifier_parts[0].to_string();
         if versioning_scheme.is_empty() {
             return Err(VersError::MissingVersioningScheme);
         }
 
-        Ok(versioning_scheme)
+        Ok((versioning_scheme, specifier_parts[1].to_string()))
     }
 }
 
@@ -221,6 +228,9 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::Deb(range) => {
                 range.contains(version_str.parse::<DebVersion>()?)
             }
+            DynamicVersionRangeInner::Cargo(range) => {
+                range.contains(version_str.parse::<CargoVersion>()?)
+            }
         }
     }
 
@@ -273,17 +283,36 @@ impl FromStr for DynamicVersionRange {
     /// ```
     /// use vers_rs::range::dynamic::DynamicVersionRange;
     /// use vers_rs::range::VersionRange;
+    /// use vers_rs::VersError;
     ///
     /// let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
     /// assert_eq!(range.versioning_scheme(), "npm");
     /// ```
     fn from_str(s: &str) -> Result<Self, VersError> {
+        if !s.is_ascii() {
+            return Err(VersError::InvalidCharacters(
+                "A VERS string shall only contain ASCII characters".to_string(),
+            ));
+        }
+
+        if s.bytes().any(is_ascii_vers_whitespace) {
+            return Err(VersError::InvalidCharacters(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string(),
+            ));
+        }
+
         // Extract the versioning scheme first to determine which type to use
-        let versioning_scheme = DynamicVersionRange::extract_versioning_scheme(s)?;
+        let (versioning_scheme, _) = DynamicVersionRange::extract_versioning_scheme(s)?;
+
+        if !is_registered_scheme(&versioning_scheme) {
+            return Err(VersError::UnknownVersioningScheme(versioning_scheme));
+        }
 
         let inner = match versioning_scheme.as_str() {
             "semver" | "npm" => DynamicVersionRangeInner::SemVer(s.parse()?),
             "deb" => DynamicVersionRangeInner::Deb(s.parse()?),
+            "cargo" => DynamicVersionRangeInner::Cargo(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
         };
 
@@ -340,6 +369,9 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
             "deb" => DynamicVersionRangeInner::Deb(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
+            "cargo" => DynamicVersionRangeInner::Cargo(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
             other => {
                 return Err(serde::de::Error::custom(format!(
                     "unsupported versioning scheme: {other}"
@@ -355,10 +387,158 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
 
 #[cfg(test)]
 mod tests {
+    use std::mem::discriminant;
+
+    use rstest::rstest;
+
     use super::DynamicVersionRange;
     use crate::Comparator;
     use crate::VersError;
     use crate::range::VersionRange;
+
+    #[rstest]
+    #[case::invalid_tab("vers:npm\t/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_newline("vers:npm\n/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_carriage_return("vers:npm\r/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_form_feed("vers:npm/\x0c1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_vertical_tab("vers:npm/\x0b1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_space_in_type("vers:npm /1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::invalid_space_in_constraint("vers:semver/1.2.3 |2.0.0", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::non_ascii_in_type("vers:npém/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::non_ascii_in_version("vers:npm/1.2.3é", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::non_ascii_whitespace("vers:npm/1.2.3\u{00A0}", VersError::InvalidCharacters("blub".to_string()))]
+    #[case::non_ascii_fullwidth_digit("vers:npm/１.2.3", VersError::InvalidCharacters("blub".to_string()))]
+    fn parse_with_disallowed_characters_should_fail(
+        #[case] input: &str,
+        #[case] expected: VersError,
+    ) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(discriminant(&err), discriminant(&expected));
+    }
+
+    #[rstest]
+    #[case::invalid_uppercase_scheme("Vers:semver/*", VersError::InvalidScheme)]
+    #[case::invalid_uppercase_type("vers:Semver/*", VersError::UnknownVersioningScheme("Unknown versioning scheme: Semver".to_string()))]
+    #[case::semver_missing_patch("vers:semver/1.2", VersError::InvalidVersionFormat("semver".to_string(), "1.2".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    #[case::semver_leading_zeroes("vers:semver/01.02", VersError::InvalidVersionFormat("semver".to_string(), "01.02".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    #[case::semver_empty_prerelease("vers:semver/1.2-", VersError::InvalidVersionFormat("semver".to_string(), "1.2-".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    #[case::npm_missing_patch("vers:npm/1.2", VersError::InvalidVersionFormat("npm".to_string(), "1.2".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    #[case::npm_extra_segment("vers:npm/1.2.3.4", VersError::InvalidVersionFormat("npm".to_string(), "1.2.3.4".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    #[case::npm_v_prefix("vers:npm/v1.2.3.4", VersError::InvalidVersionFormat("npm".to_string(), "v1.2.3.4".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    #[case::deb_underscore("vers:deb/1.2_build", VersError::InvalidVersionFormat("deb".to_string(), "1.2_build".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    #[case::cargo_missing_patch("vers:cargo/1.2", VersError::InvalidVersionFormat("cargo".to_string(), "1.2".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    #[case::cargo_invalid_percent_encoding("vers:cargo/%091.2.3", VersError::InvalidVersionFormat("cargo".to_string(), "1.2.3".to_string(), "invalid version format: expected major.minor.patch".to_string()))]
+    fn non_canonical_version_should_fail(#[case] input: &str, #[case] expected: VersError) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(discriminant(&err), discriminant(&expected));
+    }
+
+    #[test]
+    fn duplicate_versions_are_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> =
+            "vers:npm/<1.2.3|1.2.3|<2.0.0|2.0.0".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::DuplicateVersions(_)));
+        assert!(err.to_string().contains("1.2.3"));
+        assert!(err.to_string().contains("2.0.0"));
+    }
+
+    #[test]
+    fn unordered_versions_are_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/2.0.0|1.0.0".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::UnorderedVersions(_, _)));
+    }
+
+    #[test]
+    fn comparators_within_versions_are_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0>1".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::UnencodedOperator(_)));
+    }
+
+    #[test]
+    fn missing_version_is_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/>".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::MissingVersionInConstraint));
+    }
+
+    #[test]
+    fn invalid_url_encoding_should_fail() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0%3X1".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::InvalidVersionFormat(_, _, _)));
+    }
+
+    #[test]
+    fn multiple_asterisks_are_not_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/1.0.*|2.*".parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::MultipleAsterisks(_)));
+    }
+
+    #[rstest]
+    #[case::asterisk_at_first_position("vers:semver/*|1.2.3")]
+    #[case::asterisk_at_last_position("vers:semver/1.2.3|*")]
+    fn asterisk_with_other_constraints_is_not_allowed(#[case] input: &str) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::InvalidRange(_)));
+    }
+
+    #[rstest]
+    #[case::equal_lesser("vers:semver/1.0.0|<2.0.0")]
+    #[case::equal_lesser_equal("vers:semver/1.0.0|<=2.0.0")]
+    #[case::equal_non_equal_lesser("vers:semver/1.0.0|!=1.2.0|<2.0.0")]
+    #[case::equal_non_equal_lesser_equal("vers:semver/1.0.0|!=1.2.0|<=2.0.0")]
+    #[case::equal_equal_lesser("vers:semver/1.0.0|1.2.0|<2.0.0")]
+    #[case::equal_equal_lesser_equal("vers:semver/1.0.0|1.2.0|<=2.0.0")]
+    fn equal_followed_by_unallowed_successor_should_fail(#[case] input: &str) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::ConsecutiveOperators(_)));
+    }
+
+    #[rstest]
+    #[case("vers:semver/>1.0.0|1.5.0")]
+    #[case("vers:semver/>1.0.0|1.5.0|>2.0.0")]
+    #[case("vers:semver/1.0.0|>1.5.0|2.0.0|>2.5.0")]
+    fn greater_followed_by_equals_should_fail(#[case] input: &str) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::ConsecutiveOperators(_)));
+    }
+
+    #[rstest]
+    #[case("vers:semver/>1.0.0|!=1.5.0|>2.0.0")]
+    #[case("vers:semver/<1.0.0|<2.0.0")]
+    #[case("vers:semver/<1.0.0|!=1.5.0|<2.0.0")]
+    fn greater_or_lesser_should_not_be_followed_by_another_greater_or_lesser(#[case] input: &str) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, VersError::ConsecutiveOperators(_)));
+    }
+
+    #[test]
+    fn equal_followed_by_equal_is_allowed() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:semver/1.0.0|1.5.0".parse();
+        assert!(result.is_ok());
+    }
 
     #[test]
     fn test_parse_simple() {
@@ -393,17 +573,15 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_with_spaces() {
-        let range: DynamicVersionRange = "vers:npm/ >= 1.0.0 | < 2.0.0 ".parse().unwrap();
-        assert_eq!(range.versioning_scheme(), "npm");
-        assert_eq!(range.constraints().len(), 2);
-        assert_eq!(
-            range.constraints()[0].comparator,
-            Comparator::GreaterThanOrEqual
-        );
-        assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
-        assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
-        assert_eq!(range.constraints()[1].version.to_string(), "2.0.0");
+    fn test_is_open_ended_via_trait_default() {
+        let open: DynamicVersionRange = "vers:npm/>=1.0.0".parse().unwrap();
+        assert!(open.is_open_ended());
+
+        let bounded: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
+        assert!(!bounded.is_open_ended());
+
+        let star: DynamicVersionRange = "vers:npm/*".parse().unwrap();
+        assert!(!star.is_open_ended());
     }
 
     #[test]
@@ -413,18 +591,6 @@ mod tests {
         assert_eq!(range.constraints().len(), 1);
         assert_eq!(range.constraints()[0].comparator, Comparator::Equal);
         assert_eq!(range.constraints()[0].version.to_string(), "1.0.0+build.1");
-    }
-
-    #[test]
-    fn test_invalid_constraint_simplification() {
-        let result: DynamicVersionRange = "vers:npm/1.2.3|<2.0.0".parse().unwrap();
-        assert_eq!(result.to_string(), "vers:npm/<2.0.0");
-
-        let result: DynamicVersionRange = "vers:npm/>1.0.0|>2.0.0".parse().unwrap();
-        assert_eq!(result.to_string(), "vers:npm/>1.0.0");
-
-        let result: DynamicVersionRange = "vers:npm/<1.0.0|<2.0.0".parse().unwrap();
-        assert_eq!(result.to_string(), "vers:npm/<2.0.0");
     }
 
     #[test]
@@ -455,11 +621,39 @@ mod tests {
 
     #[test]
     fn test_dynamic_parse_unsupported() {
+        // "pypi" is a valid VERS scheme per the spec, but not yet implemented.
         let range: Result<DynamicVersionRange, VersError> = "vers:pypi/>=1.0.0|<2.0.0".parse();
         assert!(range.is_err());
         assert!(matches!(
             range.unwrap_err(),
             VersError::UnsupportedVersioningScheme(_)
+        ));
+    }
+
+    #[test]
+    fn test_dynamic_parse_unknown() {
+        // "not-a-scheme" is not defined by the VERS spec at all.
+        let range: Result<DynamicVersionRange, VersError> =
+            "vers:not-a-scheme/>=1.0.0|<2.0.0".parse();
+        assert!(range.is_err());
+        assert!(matches!(
+            range.unwrap_err(),
+            VersError::UnknownVersioningScheme(_)
+        ));
+    }
+
+    #[test]
+    fn test_parse_native_unknown_scheme() {
+        let result = DynamicVersionRange::parse_native("not-a-scheme", ">=1.0.0");
+        assert!(matches!(result, Err(VersError::UnknownVersioningScheme(_))));
+    }
+
+    #[test]
+    fn test_parse_native_unsupported_scheme() {
+        let result = DynamicVersionRange::parse_native("pypi", ">=1.0.0");
+        assert!(matches!(
+            result,
+            Err(VersError::UnsupportedVersioningScheme(_))
         ));
     }
 
@@ -501,11 +695,17 @@ mod tests {
 
     #[test]
     fn test_dynamic_serde_json_roundtrip() {
-        for input in ["vers:npm/>=1.0.0|<2.0.0", "vers:deb/>=1.0|<<2.0"] {
+        for input in [
+            "vers:npm/>=1.0.0|<2.0.0",
+            // Debian version format requires a complete version including revision (e.g., 1.0-0)
+            "vers:deb/>=1.0-0",
+            "vers:cargo/>=1.0.0|<2.0.0",
+        ] {
             let range: DynamicVersionRange = input.parse().unwrap();
             let json = serde_json::to_string(&range).unwrap();
             let roundtripped: DynamicVersionRange = serde_json::from_str(&json).unwrap();
             assert_eq!(range, roundtripped);
+            assert_eq!(input, range.to_string());
         }
     }
 
@@ -542,7 +742,7 @@ mod tests {
 
     #[test]
     fn test_contains_complex() {
-        let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0|!=1.5.0".parse().unwrap();
+        let range: DynamicVersionRange = "vers:npm/>=1.0.0|!=1.5.0|<2.0.0".parse().unwrap();
         assert!(range.contains("1.0.0".to_string()).unwrap());
         assert!(range.contains("1.7.0".to_string()).unwrap());
         assert!(!range.contains("1.5.0".to_string()).unwrap());
@@ -563,6 +763,19 @@ mod tests {
         assert_eq!(range.versioning_scheme(), "semver");
     }
 
+    #[rstest]
+    #[case(" >=1.0.0")]
+    #[case(">= 1.0.0")]
+    #[case(">=1.0.0 ")]
+    #[case(">=1.0.0| <2.0.0")]
+    #[case(">=1.0.0 | <2.0.0")]
+    #[case(">=1.0.0 | <2.0.0 ")]
+    #[case(">=1.0.0 | < 2.0.0 ")]
+    fn test_parse_native_npm_accepts_whitespaces(#[case] input: &str) {
+        let range = DynamicVersionRange::parse_native("npm", input).unwrap();
+        assert_eq!(range.versioning_scheme(), "npm");
+    }
+
     #[test]
     fn test_parse_native_normalizes() {
         // parse_native should run normalize_and_validate:
@@ -577,6 +790,13 @@ mod tests {
     fn test_parse_native_roundtrip() {
         let range = DynamicVersionRange::parse_native("npm", ">=1.0.0|<2.0.0").unwrap();
         assert_eq!(range.to_string(), "vers:npm/>=1.0.0|<2.0.0");
+    }
+
+    #[test]
+    fn parse_native_deb_without_equals_should_fail() {
+        let result = DynamicVersionRange::parse_native("deb", "1.0");
+        println!("Result: {:?}", result);
+        assert!(result.is_err());
     }
 
     #[cfg(feature = "wasm")]
@@ -594,7 +814,7 @@ mod tests {
 
         assert!(
             DynamicVersionRange::DECL.contains(
-                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion>;"
+                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion>;"
             )
         );
     }

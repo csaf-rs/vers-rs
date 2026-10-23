@@ -1,6 +1,6 @@
 [package]
 name = "vers-rs"
-version = "0.1.2"
+version = "0.1.4"
 repository = "https://github.com/csaf-rs/vers-rs"
 keywords = ["vers"]
 readme = "README.md"
@@ -20,15 +20,18 @@ wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:tsify", "dep:serde-wasm-bindgen"]
 
 [dependencies]
 thiserror = "2"
+maven-version-range = "0.1.1"
 percent-encoding = "2"
 semver = { version = "1", features = ["serde"] }
 derive_more = { version = "2", features = ["from_str", "display"] }
 wasm-bindgen = { version = "0.2.104", optional = true }
-js-sys = { version = "*", optional = true }
-tsify = { version = "*", optional = true }
+js-sys = { version = "0.3", optional = true }
+tsify = { version = "0.5", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = { version = "0.6", optional = true }
 serde_json = "1.0.151"
+debversion = { version = "0.5.4", features = ["serde"] }
 
 [dev-dependencies]
+rstest = "0.27.0"
 wasm-bindgen-test = "0.3"
