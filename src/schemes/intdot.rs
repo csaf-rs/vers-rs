@@ -18,38 +18,28 @@
 //! `1.2` and `1.2.0` compare equal (even though both remain valid, distinct
 //! ways to spell the same version).
 //!
-//! ## Standard vs. native parsing
+//! ## There is no separate canonical form
 //!
-//! Standard `vers:intdot/...` strings are parsed via [`FromStr`], which only
-//! accepts versions **already** in canonical form: one or more ASCII digit
-//! segments separated by single dots, with no leading zeros (a zero segment
-//! is exactly `"0"`) and no trailing suffix. Non-canonical spellings (leading
-//! zeros, an ignored suffix) are rejected outright rather than silently
-//! normalized, matching how other schemes in this crate (e.g. `SemVer`)
-//! require their standard vers strings to already be canonical.
-//!
-//! Native-syntax parsing (via
+//! Unlike some other schemes in this crate (e.g. `SemVer`), the VERS
+//! specification does not define a stricter "canonical form" for `intdot`
+//! versions beyond the lenient rules above. Leading zeros and an ignored
+//! suffix are therefore tolerated and normalized unconditionally by
+//! [`FromStr`], both for standard `vers:intdot/...` strings and for
+//! native-syntax parsing (via
 //! [`NativeVersionConverter::from_native_constraint`], used by e.g.
-//! [`DynamicVersionRange::parse_native`](crate::range::dynamic::DynamicVersionRange::parse_native))
-//! is more permissive: it tolerates and normalizes leading zeros and ignored
-//! suffixes, since real-world version strings commonly include this kind of
-//! non-canonical variation. The same lenient parsing is used for the version
-//! being tested in `DynamicVersionRange::contains`:
-//! only the vers string itself (the range) is required to be in canonical
-//! form.
+//! [`DynamicVersionRange::parse_native`](crate::range::dynamic::DynamicVersionRange::parse_native)),
+//! as well as for the version being tested in `DynamicVersionRange::contains`.
 //!
 //! Note that an explicit trailing zero segment (e.g. `2.0`, `1.2.0.0`) is
-//! *not* considered non-canonical by either parsing mode: it has no leading
-//! zeros, so it's accepted and stored exactly as written by both. Only
-//! equality/ordering treat it as equivalent to the shorter spelling.
+//! *not* considered non-canonical: it has no leading zeros, so it's accepted
+//! and stored exactly as written. Only equality/ordering treat it as
+//! equivalent to the shorter spelling.
 //!
 //! Segments are compared by significant length and then lexicographically
 //! rather than being parsed into a fixed-width integer type, so arbitrarily
 //! large segments (far beyond `u64::MAX`) compare correctly without overflow.
 
-use crate::Comparator;
 use crate::VersError;
-use crate::VersionConstraint;
 use crate::constraint::NativeVersionConverter;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
@@ -62,12 +52,12 @@ pub const INTDOT_SCHEME: &str = "intdot";
 
 /// An `intdot` version: one or more non-negative integers separated by dots.
 ///
-/// The value stored internally is exactly the string it was parsed from (via
-/// strict [`FromStr`]) or normalized to (via lenient native parsing); see the
-/// [module documentation](self) for the distinction. `Eq`, `Ord`, and `Hash`
-/// are implemented manually so that a missing trailing segment is treated as
-/// equivalent to an explicit zero segment, without requiring that
-/// equivalence to be reflected in storage.
+/// The value stored internally is the normalized string produced by parsing
+/// (see [`FromStr`]): leading zeros per segment are stripped and any
+/// trailing suffix is dropped. `Eq`, `Ord`, and `Hash` are implemented
+/// manually so that a missing trailing segment is treated as equivalent to
+/// an explicit zero segment, without requiring that equivalence to be
+/// reflected in storage.
 ///
 /// # Examples
 ///
@@ -75,10 +65,10 @@ pub const INTDOT_SCHEME: &str = "intdot";
 /// use vers_rs::schemes::intdot::IntDotVersion;
 /// use std::str::FromStr;
 ///
-/// // Standard parsing requires the canonical form: ASCII digit segments
-/// // separated by dots, with no leading zeros.
+/// // Parsing tolerates leading zeros and an ignored suffix (there is no
+/// // separate, stricter canonical form for this scheme).
 /// let a = IntDotVersion::from_str("1.2.3").unwrap();
-/// assert!(IntDotVersion::from_str("01.2.3").is_err());
+/// assert_eq!(a, IntDotVersion::from_str("01.2.3").unwrap());
 ///
 /// // A missing trailing segment is equivalent to an explicit zero segment.
 /// assert_eq!(a, IntDotVersion::from_str("1.2.3.0").unwrap());
@@ -100,46 +90,11 @@ pub struct IntDotVersion(String);
 impl NativeVersionConverter for IntDotVersion {
     const SCHEME_NAME: &'static str = INTDOT_SCHEME;
 
-    /// `intdot` uses the standard vers operators, separator, and wildcard
-    /// (the trait defaults), but overrides constraint parsing so that the
-    /// version itself is parsed leniently (tolerating leading zeros and an
-    /// ignored suffix) rather than through the strict [`FromStr`], which is
-    /// reserved for standard `vers:` strings. See the [module
-    /// documentation](self) for details.
-    fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
-        let raw = raw.trim();
-        if raw.is_empty() {
-            return Err(VersError::InvalidConstraint("Empty constraint".to_string()));
-        }
-
-        if Self::native_wildcard() == Some(raw) {
-            return Ok(VersionConstraint::new(Comparator::Any, Self::default()));
-        }
-
-        let operator_match = Self::native_operators()
-            .iter()
-            .find_map(|(token, comparator)| {
-                raw.strip_prefix(token).map(|rest| (*comparator, rest))
-            });
-
-        if let Some((comparator, version_str)) = operator_match {
-            let version_str = version_str.trim();
-            if version_str.is_empty() {
-                return Err(VersError::InvalidConstraint("Missing version".to_string()));
-            }
-            Ok(VersionConstraint::new(
-                comparator,
-                parse_lenient(version_str)?,
-            ))
-        } else {
-            // No operator token matched: treat the whole (trimmed) string as
-            // an implicit-equal bare version, matching standard vers syntax.
-            Ok(VersionConstraint::new(
-                Comparator::Equal,
-                parse_lenient(raw)?,
-            ))
-        }
-    }
+    // `intdot` uses the standard vers operators, separator, wildcard, and
+    // constraint-parsing logic (the trait defaults): since `FromStr` for
+    // `IntDotVersion` already parses leniently (there's no separate
+    // canonical form for this scheme; see the [module documentation](self)),
+    // no override is needed here.
 }
 
 impl Default for IntDotVersion {
@@ -151,24 +106,58 @@ impl Default for IntDotVersion {
 impl FromStr for IntDotVersion {
     type Err = VersError;
 
-    /// Strictly parses `s` as a canonical `intdot` version: one or more
-    /// ASCII digit segments separated by single dots, with no leading zeros
-    /// (a zero segment must be exactly `"0"`) and nothing else. Unlike
-    /// native parsing, this does **not** tolerate or normalize leading
-    /// zeros or a trailing suffix; such input is rejected.
+    /// Parses `s` into an `intdot` version, tolerating non-canonical input:
+    /// leading zeros per segment (stripped), and any suffix starting at the
+    /// first character that is neither an ASCII digit nor a dot immediately
+    /// followed by another digit (dropped, along with any dot that precedes
+    /// it). There is no separate, stricter canonical form for this scheme
+    /// (see the [module documentation](self)), so this leniency applies
+    /// equally to standard `vers:intdot/...` strings, native-syntax parsing,
+    /// and the version being tested in
+    /// [`VersionRange::contains`](crate::range::VersionRange::contains).
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if is_canonical(s) {
-            Ok(IntDotVersion(s.to_string()))
-        } else {
-            Err(VersError::InvalidVersionFormat(
+        let bytes = s.as_bytes();
+
+        if bytes.is_empty() || !bytes[0].is_ascii_digit() {
+            return Err(VersError::InvalidVersionFormat(
                 INTDOT_SCHEME.to_string(),
                 s.to_string(),
-                "version must be in canonical intdot form: one or more ASCII digit segments \
-                 separated by single dots, with no leading zeros and no trailing characters \
-                 (e.g. \"1.2.3\", not \"01.2.3\" or \"1.2.3beta\")"
-                    .to_string(),
-            ))
+                "version must start with an ASCII digit".to_string(),
+            ));
         }
+
+        let mut normalized = String::with_capacity(s.len());
+        let mut i = 0;
+        loop {
+            let start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            // Safe: `start..i` spans only ASCII digit bytes, so it's always a
+            // valid (and non-empty, on first entry guaranteed by the check
+            // above, and on later entries by the lookahead below) UTF-8 slice.
+            let segment = &s[start..i];
+            let significant_digits = match segment.bytes().position(|b| b != b'0') {
+                Some(p) => &segment[p..],
+                None => "0",
+            };
+
+            if !normalized.is_empty() {
+                normalized.push('.');
+            }
+            normalized.push_str(significant_digits);
+
+            // Only continue past a dot when it's immediately followed by
+            // another digit; otherwise everything from here on (a trailing
+            // dot, a run of dots, or any other character) is an ignored suffix.
+            if i + 1 < bytes.len() && bytes[i] == b'.' && bytes[i + 1].is_ascii_digit() {
+                i += 1;
+            } else {
+                break;
+            }
+        }
+
+        Ok(IntDotVersion(normalized))
     }
 }
 
@@ -235,81 +224,10 @@ impl Ord for IntDotVersion {
     }
 }
 
-/// Returns `true` if `s` is already in canonical `intdot` form: one or more
-/// ASCII-digit segments separated by single dots, with no leading zeros (a
-/// zero segment is exactly `"0"`), and nothing else (no suffix, no empty
-/// segments, no leading/trailing dot).
-fn is_canonical(s: &str) -> bool {
-    !s.is_empty()
-        && s.split('.').all(|segment| {
-            !segment.is_empty()
-                && segment.bytes().all(|b| b.is_ascii_digit())
-                && (segment.len() == 1 || segment.as_bytes()[0] != b'0')
-        })
-}
-
-/// Parse `s` leniently into an `intdot` version, tolerating non-canonical
-/// input: leading zeros per segment (stripped), and any suffix starting at
-/// the first character that is neither an ASCII digit nor a dot immediately
-/// followed by another digit (dropped, along with any dot that precedes it).
-///
-/// Used for native-syntax parsing (see
-/// [`NativeVersionConverter::from_native_constraint`] above) as well as for
-/// parsing the version being tested in
-/// [`VersionRange::contains`](crate::range::VersionRange::contains),
-/// since real-world version strings commonly include this kind of
-/// non-canonical variation. Standard `vers:` strings themselves must still
-/// already be in canonical form (see [`FromStr`]).
-pub(crate) fn parse_lenient(s: &str) -> Result<IntDotVersion, VersError> {
-    let bytes = s.as_bytes();
-
-    if bytes.is_empty() || !bytes[0].is_ascii_digit() {
-        return Err(VersError::InvalidVersionFormat(
-            INTDOT_SCHEME.to_string(),
-            s.to_string(),
-            "version must start with an ASCII digit".to_string(),
-        ));
-    }
-
-    let mut canonical = String::with_capacity(s.len());
-    let mut i = 0;
-    loop {
-        let start = i;
-        while i < bytes.len() && bytes[i].is_ascii_digit() {
-            i += 1;
-        }
-        // Safe: `start..i` spans only ASCII digit bytes, so it's always a
-        // valid (and non-empty, on first entry guaranteed by the check
-        // above, and on later entries by the lookahead below) UTF-8 slice.
-        let segment = &s[start..i];
-        let significant_digits = match segment.bytes().position(|b| b != b'0') {
-            Some(p) => &segment[p..],
-            None => "0",
-        };
-
-        if !canonical.is_empty() {
-            canonical.push('.');
-        }
-        canonical.push_str(significant_digits);
-
-        // Only continue past a dot when it's immediately followed by
-        // another digit; otherwise everything from here on (a trailing
-        // dot, a run of dots, or any other character) is an ignored suffix.
-        if i + 1 < bytes.len() && bytes[i] == b'.' && bytes[i + 1].is_ascii_digit() {
-            i += 1;
-        } else {
-            break;
-        }
-    }
-
-    Ok(IntDotVersion(canonical))
-}
-
 /// Returns the comparison/hash form of `s`: `s` with any trailing all-zero
 /// segments trimmed (keeping at least one segment), so that e.g. `"1.2.0"`
 /// and `"1.2.0.0"` both reduce to `"1.2"`. `s` is assumed to already have no
-/// leading zeros per segment (guaranteed by both `FromStr` and
-/// [`parse_lenient`]).
+/// leading zeros per segment (guaranteed by [`FromStr`]).
 ///
 /// This is deliberately *not* used for `Display`/storage: an explicit
 /// trailing zero segment is a valid, distinct spelling of a version (see the
@@ -344,93 +262,104 @@ mod tsify_decl_check {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Comparator;
     use crate::range::VersionRange;
     use crate::range::dynamic::DynamicVersionRange;
     use crate::range::vers::VersVersionRange;
 
-    // --- Strict (standard vers) parsing -------------------------------------
+    // --- Parsing (there is no separate canonical form) ----------------------
 
     #[test]
-    fn strict_parsing_accepts_canonical_forms() {
-        for canonical in ["0", "1", "1.2.3", "2.0", "1.2.0.0", "18446744073709551616"] {
-            let v = IntDotVersion::from_str(canonical)
-                .unwrap_or_else(|e| panic!("expected {canonical:?} to be accepted, got {e}"));
-            // Strict parsing never rewrites its input: it's accepted verbatim.
-            assert_eq!(v.to_string(), canonical);
+    fn parsing_accepts_already_normalized_forms_verbatim() {
+        for normalized in ["0", "1", "1.2.3", "2.0", "1.2.0.0", "18446744073709551616"] {
+            let v = IntDotVersion::from_str(normalized)
+                .unwrap_or_else(|e| panic!("expected {normalized:?} to be accepted, got {e}"));
+            assert_eq!(v.to_string(), normalized);
         }
     }
 
     #[test]
-    fn strict_parsing_rejects_non_canonical_or_invalid_forms() {
-        for invalid in [
-            "", "beta", ".1", "1.", "1..2", "v1.2", "-1.2", "00", "01.2.3", "1.2beta", "1.2.beta",
-            "١٠",
-        ] {
-            assert!(
-                IntDotVersion::from_str(invalid).is_err(),
-                "expected {invalid:?} to be rejected by strict parsing"
-            );
-        }
-    }
-
-    #[test]
-    fn standard_vers_string_rejects_non_canonical_version() {
-        let result: Result<DynamicVersionRange, VersError> = "vers:intdot/01.2".parse();
-        assert!(matches!(
-            result,
-            Err(VersError::InvalidVersionFormat(_, _, _))
-        ));
-    }
-
-    // --- Lenient (native) parsing --------------------------------------------
-
-    #[test]
-    fn native_parsing_strips_leading_zeros_per_segment() {
-        assert_eq!(parse_lenient("01.002.0003").unwrap().to_string(), "1.2.3");
-        assert_eq!(parse_lenient("01.000.0003").unwrap().to_string(), "1.0.3");
-        assert_eq!(parse_lenient("00.000.0003").unwrap().to_string(), "0.0.3");
-    }
-
-    #[test]
-    fn native_parsing_preserves_trailing_zero_segments() {
-        // Unlike leading zeros, an explicit trailing zero segment is not
-        // stripped by canonicalization; it's a valid spelling on its own.
-        assert_eq!(parse_lenient("1.2.0").unwrap().to_string(), "1.2.0");
-        assert_eq!(parse_lenient("01.2.0").unwrap().to_string(), "1.2.0");
-    }
-
-    #[test]
-    fn native_parsing_ignores_suffix_after_first_non_digit_non_dot_char() {
-        assert_eq!(parse_lenient("1.2beta").unwrap().to_string(), "1.2");
-        assert_eq!(parse_lenient("1.10alpha").unwrap().to_string(), "1.10");
-        assert_eq!(parse_lenient("1.3rc1").unwrap().to_string(), "1.3");
-        assert_eq!(parse_lenient("10e2").unwrap().to_string(), "10");
-    }
-
-    #[test]
-    fn native_parsing_trailing_dot_and_double_dot_stop_interpretation() {
-        assert_eq!(parse_lenient("1.2.").unwrap().to_string(), "1.2");
-        assert_eq!(parse_lenient("1..2").unwrap().to_string(), "1");
-        assert_eq!(parse_lenient("1.2.beta").unwrap().to_string(), "1.2");
-    }
-
-    #[test]
-    fn native_parsing_rejects_structurally_invalid_versions() {
+    fn parsing_rejects_structurally_invalid_versions() {
         for invalid in ["", "beta", ".1", "v1.2", "-1.2"] {
             assert!(
-                parse_lenient(invalid).is_err(),
+                IntDotVersion::from_str(invalid).is_err(),
                 "expected {invalid:?} to be rejected"
             );
         }
     }
 
     #[test]
-    fn native_parsing_non_ascii_digits_are_not_accepted_as_digits() {
+    fn standard_vers_string_accepts_non_normalized_version() {
+        // There is no separate canonical form for `intdot`, so standard
+        // `vers:` strings are parsed just as leniently as native syntax.
+        let result: Result<DynamicVersionRange, VersError> = "vers:intdot/01.2".parse();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn parsing_strips_leading_zeros_per_segment() {
+        assert_eq!(
+            IntDotVersion::from_str("01.002.0003").unwrap().to_string(),
+            "1.2.3"
+        );
+        assert_eq!(
+            IntDotVersion::from_str("01.000.0003").unwrap().to_string(),
+            "1.0.3"
+        );
+        assert_eq!(
+            IntDotVersion::from_str("00.000.0003").unwrap().to_string(),
+            "0.0.3"
+        );
+    }
+
+    #[test]
+    fn parsing_preserves_trailing_zero_segments() {
+        // Unlike leading zeros, an explicit trailing zero segment is not
+        // stripped by normalization; it's a valid spelling on its own.
+        assert_eq!(
+            IntDotVersion::from_str("1.2.0").unwrap().to_string(),
+            "1.2.0"
+        );
+        assert_eq!(
+            IntDotVersion::from_str("01.2.0").unwrap().to_string(),
+            "1.2.0"
+        );
+    }
+
+    #[test]
+    fn parsing_ignores_suffix_after_first_non_digit_non_dot_char() {
+        assert_eq!(
+            IntDotVersion::from_str("1.2beta").unwrap().to_string(),
+            "1.2"
+        );
+        assert_eq!(
+            IntDotVersion::from_str("1.10alpha").unwrap().to_string(),
+            "1.10"
+        );
+        assert_eq!(
+            IntDotVersion::from_str("1.3rc1").unwrap().to_string(),
+            "1.3"
+        );
+        assert_eq!(IntDotVersion::from_str("10e2").unwrap().to_string(), "10");
+    }
+
+    #[test]
+    fn parsing_trailing_dot_and_double_dot_stop_interpretation() {
+        assert_eq!(IntDotVersion::from_str("1.2.").unwrap().to_string(), "1.2");
+        assert_eq!(IntDotVersion::from_str("1..2").unwrap().to_string(), "1");
+        assert_eq!(
+            IntDotVersion::from_str("1.2.beta").unwrap().to_string(),
+            "1.2"
+        );
+    }
+
+    #[test]
+    fn parsing_non_ascii_digits_are_not_accepted_as_digits() {
         // "١٠" is Arabic-Indic for "10"; it must not be treated as a digit.
-        assert!(parse_lenient("١٠").is_err());
+        assert!(IntDotVersion::from_str("١٠").is_err());
         // The numeric prefix stops before non-ASCII characters, same as any
         // other non-digit, non-dot byte.
-        assert_eq!(parse_lenient("1.٢").unwrap().to_string(), "1");
+        assert_eq!(IntDotVersion::from_str("1.٢").unwrap().to_string(), "1");
     }
 
     // --- Equality (ported from the official VERS intdot test suite) -------
@@ -446,15 +375,13 @@ mod tests {
     #[test]
     fn leading_zeros_are_ignored_for_equality() {
         assert_eq!(
-            parse_lenient("01.002.0003").unwrap(),
+            IntDotVersion::from_str("01.002.0003").unwrap(),
             IntDotVersion::from_str("1.2.3").unwrap()
         );
     }
 
     #[test]
     fn missing_trailing_segment_is_equivalent_to_zero_segment() {
-        // Both spellings are individually valid canonical forms, so this
-        // works through strict parsing alone.
         assert_eq!(
             IntDotVersion::from_str("1.2").unwrap(),
             IntDotVersion::from_str("1.2.0").unwrap()
@@ -472,8 +399,8 @@ mod tests {
     #[test]
     fn suffixes_are_ignored_for_equality() {
         assert_eq!(
-            parse_lenient("1.2beta").unwrap(),
-            parse_lenient("1.2rc1").unwrap()
+            IntDotVersion::from_str("1.2beta").unwrap(),
+            IntDotVersion::from_str("1.2rc1").unwrap()
         );
     }
 
@@ -498,7 +425,7 @@ mod tests {
     fn mixed_leading_zero_forms_sort_by_normalized_numeric_segments() {
         let mut versions: Vec<IntDotVersion> = ["1.0002.10", "1.00.6", "1.2.2", "1.02.0011"]
             .into_iter()
-            .map(|s| parse_lenient(s).unwrap())
+            .map(|s| IntDotVersion::from_str(s).unwrap())
             .collect();
         versions.sort();
         let sorted: Vec<String> = versions.iter().map(ToString::to_string).collect();
@@ -509,7 +436,7 @@ mod tests {
     fn suffixes_are_ignored_for_comparison() {
         let mut versions: Vec<IntDotVersion> = ["1.2beta", "1.10alpha", "1.3rc1"]
             .into_iter()
-            .map(|s| parse_lenient(s).unwrap())
+            .map(|s| IntDotVersion::from_str(s).unwrap())
             .collect();
         versions.sort();
         let sorted: Vec<String> = versions.iter().map(ToString::to_string).collect();
@@ -536,8 +463,10 @@ mod tests {
         let versions = [
             "1.2", "1.2.0", "1.2.0.0", "1.20", "01.2", "1.2beta", "1.2.1", "2", "0", "0.0",
         ];
-        let parsed: Vec<IntDotVersion> =
-            versions.iter().map(|s| parse_lenient(s).unwrap()).collect();
+        let parsed: Vec<IntDotVersion> = versions
+            .iter()
+            .map(|s| IntDotVersion::from_str(s).unwrap())
+            .collect();
         for a in &parsed {
             for b in &parsed {
                 assert_eq!(a == b, a.cmp(b) == Ordering::Equal, "{a} vs {b}");
@@ -596,10 +525,9 @@ mod tests {
 
     #[test]
     fn dynamic_contains_parses_tested_version_leniently() {
-        // Unlike the range itself (which must be in canonical `vers:` form),
-        // the tested version passed to `contains` is parsed leniently:
-        // leading zeros and an ignored suffix are tolerated and normalized,
-        // not rejected.
+        // Both the range itself and the tested version passed to `contains`
+        // are parsed leniently: leading zeros and an ignored suffix are
+        // tolerated and normalized, not rejected.
         let range: DynamicVersionRange = "vers:intdot/>=1.2|<2.0".parse().unwrap();
         assert!(range.contains("1.2beta".to_string()).unwrap());
         assert!(range.contains("01.5.0".to_string()).unwrap());
@@ -639,14 +567,14 @@ mod tests {
     }
 
     #[test]
-    fn typed_serde_rejects_non_canonical_leading_zero() {
-        let result: Result<IntDotVersion, _> = serde_json::from_str("\"01.2\"");
-        assert!(result.is_err());
+    fn typed_serde_normalizes_leading_zero() {
+        let v: IntDotVersion = serde_json::from_str("\"01.2\"").unwrap();
+        assert_eq!(v.to_string(), "1.2");
     }
 
     #[test]
-    fn typed_serde_rejects_suffixed_version() {
-        let result: Result<IntDotVersion, _> = serde_json::from_str("\"1.2beta\"");
-        assert!(result.is_err());
+    fn typed_serde_strips_suffixed_version() {
+        let v: IntDotVersion = serde_json::from_str("\"1.2beta\"").unwrap();
+        assert_eq!(v.to_string(), "1.2");
     }
 }

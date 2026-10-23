@@ -1,11 +1,6 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
-use crate::schemes::{
-    cargo::CargoVersion,
-    deb::DebVersion,
-    intdot::{IntDotVersion, parse_lenient},
-    semver::SemVer,
-};
+use crate::schemes::{cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, semver::SemVer};
 use crate::{
     VersError, VersVersionRange, VersionConstraint, is_ascii_vers_whitespace, is_registered_scheme,
 };
@@ -216,12 +211,9 @@ impl VersionRange<String> for DynamicVersionRange {
     /// This method automatically parses the version string using the appropriate
     /// version type based on the detected versioning scheme.
     ///
-    /// For the `intdot` scheme, the version string is parsed leniently
-    /// (tolerating leading zeros and an ignored suffix, same as native-syntax
-    /// range parsing), since real-world version strings commonly include
-    /// this kind of non-canonical variation. The range (`self`) itself is
-    /// unaffected by this and must still be in canonical form, as for every
-    /// other scheme.
+    /// For the `intdot` scheme, there is no separate canonical form, so the
+    /// version string is always parsed leniently (tolerating leading zeros
+    /// and an ignored suffix), same as the range itself.
     ///
     /// # Arguments
     ///
@@ -252,7 +244,9 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::Cargo(range) => {
                 range.contains(version_str.parse::<CargoVersion>()?)
             }
-            DynamicVersionRangeInner::IntDot(range) => range.contains(parse_lenient(&version_str)?),
+            DynamicVersionRangeInner::IntDot(range) => {
+                range.contains(version_str.parse::<IntDotVersion>()?)
+            }
         }
     }
 
