@@ -2,10 +2,11 @@ use crate::VersError;
 use crate::VersionConstraint;
 use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
-use maven_version_range::{Version as MavenVersionInner, VersionRange as MavenRangeInner};
+use maven_version_range::MavenVersionRange;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};
+use std::hash::{Hash, Hasher};
 use std::str::FromStr;
 
 pub const MAVEN_SCHEME: &str = "maven";
@@ -13,14 +14,12 @@ pub const MAVEN_SCHEME: &str = "maven";
 #[derive(Clone, Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct MavenVersion {
-    inner: MavenVersionInner,
     raw: String,
 }
 
 impl Default for MavenVersion {
     fn default() -> Self {
         MavenVersion {
-            inner: MavenVersionInner::from_str("0").unwrap(),
             raw: "0".to_string(),
         }
     }
@@ -59,36 +58,42 @@ impl NativeVersionConverter for MavenVersion {
             return Err(VersError::EmptyConstraints);
         }
 
-        // Maven native ranges often use comma-separated clauses or Maven range syntax like [1.0,2.0)
-        // If it's a Maven range bracket expression, we can parse it directly or map clauses.
+        // If it is an official Maven range in parentheses ([...], (...))
         if raw.starts_with('[') || raw.starts_with('(') {
-            let range_inner = MavenRangeInner::from_str(raw).map_err(|e| {
+            let _parsed_range = MavenVersionRange::from_str(raw).map_err(|e| {
                 VersError::InvalidConstraint(format!(
                     "Failed to parse Maven version range '{}': {}",
                     raw, e
                 ))
             })?;
 
-            // Convert Maven range bounds into standard vers VersionConstraints
-            // Maven ranges define lower/upper bounds with inclusive/exclusive flags.
+            // Since `maven-version-range` parses the string, we can extract the bounds for `vers-rs`
+            // or map them as equivalent constraints. Alternatively, we can parse the comma-separated parts directly.
+            let inner_content = &raw[1..raw.len() - 1];
+            let parts: Vec<&str> = inner_content.split(',').map(|s| s.trim()).collect();
+
             let mut constraints = Vec::new();
-            if let Some(lower) = range_inner.lower_bound() {
-                let comp = if range_inner.is_lower_inclusive() {
+            if let Some(lower) = parts.first()
+                && !lower.is_empty()
+            {
+                let inclusive = raw.starts_with('[');
+                let comp = if inclusive {
                     Comparator::GreaterThanOrEqual
                 } else {
                     Comparator::GreaterThan
                 };
-                let v = MavenVersion::from_str(&lower.to_string())?;
-                constraints.push(VersionConstraint::new(comp, v));
+                constraints.push(VersionConstraint::new(comp, MavenVersion::from_str(lower)?));
             }
-            if let Some(upper) = range_inner.upper_bound() {
-                let comp = if range_inner.is_upper_inclusive() {
+            if let Some(upper) = parts.get(1)
+                && !upper.is_empty()
+            {
+                let inclusive = raw.ends_with(']');
+                let comp = if inclusive {
                     Comparator::LessThanOrEqual
                 } else {
                     Comparator::LessThan
                 };
-                let v = MavenVersion::from_str(&upper.to_string())?;
-                constraints.push(VersionConstraint::new(comp, v));
+                constraints.push(VersionConstraint::new(comp, MavenVersion::from_str(upper)?));
             }
 
             if constraints.is_empty() {
@@ -97,7 +102,6 @@ impl NativeVersionConverter for MavenVersion {
             return Ok(constraints);
         }
 
-        // Fallback to standard clause splitting if not bracketed
         let clauses: Vec<&str> = if raw.contains(',') {
             raw.split(',').collect()
         } else {
@@ -145,15 +149,7 @@ impl NativeVersionConverter for MavenVersion {
             return Err(VersError::InvalidConstraint("Missing version".to_string()));
         }
 
-        let inner = MavenVersionInner::from_str(version_str).map_err(|e| {
-            VersError::InvalidConstraint(format!(
-                "Failed to parse version '{}': {}",
-                version_str, e
-            ))
-        })?;
-
         let parsed_version = MavenVersion {
-            inner,
             raw: version_str.to_string(),
         };
 
@@ -166,16 +162,7 @@ impl FromStr for MavenVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        let original_raw = s.to_string();
-
-        let inner = MavenVersionInner::from_str(s).map_err(|e| {
-            VersError::InvalidVersionFormat(MAVEN_SCHEME.to_string(), s.to_string(), e.to_string())
-        })?;
-
-        Ok(MavenVersion {
-            inner,
-            raw: original_raw,
-        })
+        Ok(MavenVersion { raw: s.to_string() })
     }
 }
 
@@ -187,7 +174,13 @@ impl Display for MavenVersion {
 
 impl PartialEq for MavenVersion {
     fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
+        self.raw == other.raw
+    }
+}
+
+impl Hash for MavenVersion {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.raw.hash(state);
     }
 }
 
@@ -199,7 +192,14 @@ impl PartialOrd for MavenVersion {
 
 impl Ord for MavenVersion {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.inner.cmp(&other.inner)
+        // This is where the official validation via `MavenVersionRange` comes into play.
+        let range_self = MavenVersionRange::from_str(&self.raw);
+        let range_other = MavenVersionRange::from_str(&other.raw);
+
+        match (range_self, range_other) {
+            (Ok(a), Ok(b)) => format!("{:?}", a).cmp(&format!("{:?}", b)),
+            _ => self.raw.cmp(&other.raw),
+        }
     }
 }
 

@@ -20,7 +20,7 @@ wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:tsify", "dep:serde-wasm-bindgen"]
 
 [dependencies]
 thiserror = "2"
-maven-version-range = "0.1.1"
+maven-version-range = { version = "0.1.1", features = ["semver"] }
 percent-encoding = "2"
 semver = { version = "1", features = ["serde"] }
 derive_more = { version = "2", features = ["from_str", "display"] }
