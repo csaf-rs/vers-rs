@@ -50,7 +50,7 @@ where
     Self::Err: Into<VersError>,
 {
     /// The vers scheme identifier for this version type (e.g. `"deb"`, `"semver"`).
-    const SCHEME_NAME: &'static str;
+    fn scheme_name() -> &'static str;
 
     /// The character used to separate multiple native constraints within a
     /// single native range string.
@@ -402,7 +402,9 @@ mod native_version_converter_tests {
     /// (`gte`, `lte`, `gt`, `lt`, `eq`) instead of the standard vers symbols,
     /// and disables the wildcard token entirely.
     impl NativeVersionConverter for TestVersion {
-        const SCHEME_NAME: &'static str = "test";
+        fn scheme_name() -> &'static str {
+            "test"
+        }
         const NATIVE_SEPARATOR: char = ';';
 
         fn native_operators() -> &'static [(&'static str, Comparator)] {
@@ -498,7 +500,9 @@ mod native_version_converter_tests {
         }
 
         impl NativeVersionConverter for ExplicitOnlyVersion {
-            const SCHEME_NAME: &'static str = "test-explicit-only";
+            fn scheme_name() -> &'static str {
+                "test-explicit-only"
+            }
 
             fn native_allows_implicit_equal() -> bool {
                 false

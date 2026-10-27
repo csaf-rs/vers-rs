@@ -1,16 +1,13 @@
 use crate::VersionConstraint;
 use crate::constraint::NativeVersionConverter;
 use crate::is_ascii_vers_whitespace;
-use crate::{Comparator, VersError};
+use crate::{Comparator, VersError, VersioningScheme};
 use debversion::Version as DebVersionInner;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
-
-/// Scheme identifier string for Debian versions
-pub const DEB_SCHEME: &str = "deb";
 
 /// Debian version wrapper implementing `NativeVersionConverter` using the `debversion` crate.
 #[derive(Display, Clone, Debug, Eq, Serialize, Deserialize)]
@@ -24,7 +21,9 @@ impl Default for DebVersion {
 }
 
 impl NativeVersionConverter for DebVersion {
-    const SCHEME_NAME: &'static str = DEB_SCHEME;
+    fn scheme_name() -> &'static str {
+        VersioningScheme::Deb.as_ref()
+    }
 
     /// Debian version relations (`<<`, `<=`, `=`, `>=`, `>>`) instead of the
     /// standard vers operators; notably no bare `<`/`>`/`!=`. Longer tokens
@@ -85,7 +84,11 @@ impl FromStr for DebVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let inner = DebVersionInner::from_str(s).map_err(|e| {
-            VersError::InvalidVersionFormat(DEB_SCHEME.to_string(), s.to_string(), e.to_string())
+            VersError::InvalidVersionFormat(
+                Self::scheme_name().to_string(),
+                s.to_string(),
+                e.to_string(),
+            )
         })?;
         Ok(DebVersion(inner))
     }
