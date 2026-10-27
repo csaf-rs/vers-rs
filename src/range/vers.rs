@@ -21,12 +21,11 @@
 //! It also implements `FromStr` for parsing a string into a `VersionRange` and
 //! `Display` for converting a `VersionRange` back to a string.
 
-use crate::Comparator;
+use crate::{Comparator, VersError};
 use crate::Comparator::*;
 use crate::DynamicVersionRange;
 use crate::VersionConstraint;
 use crate::constraint::VersionType;
-use crate::error::VersError;
 use crate::is_ascii_vers_whitespace;
 use crate::range::VersionRange;
 use serde::{Deserialize, Serialize};

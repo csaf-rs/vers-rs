@@ -4,9 +4,6 @@
 //! The main error type is `VersError`, which represents all possible
 //! errors that can occur when working with version range specifiers.
 
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
 #[cfg(feature = "wasm")]
 use {js_sys::Error as JsError, tsify::Tsify, wasm_bindgen::JsValue};
 
@@ -14,7 +11,7 @@ use {js_sys::Error as JsError, tsify::Tsify, wasm_bindgen::JsValue};
 ///
 /// This enum represents all the possible errors that can occur when parsing,
 /// validating, or using version range specifiers.
-#[derive(Error, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(thiserror::Error, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "wasm", derive(Tsify))]
 pub enum VersError {
     #[error("Invalid characters in version range specifier: {0}")]
@@ -41,13 +38,11 @@ pub enum VersError {
     #[error("Incompatible versioning schemes: {0} and {1}")]
     IncompatibleVersioningSchemes(String, String),
 
-    /// The versioning scheme is not one of the schemes defined by the VERS
-    /// specification (see [`crate::VersioningScheme`]).
+    /// The versioning scheme is not one of the schemes defined by the VERS specification (see [`crate::VersioningScheme`])..
     #[error("Unknown versioning scheme: {0}")]
     UnknownVersioningScheme(String),
 
-    /// The versioning scheme is defined by the VERS specification, but this
-    /// library does not (yet) implement it.
+    /// The versioning scheme is defined by VERS but not (yet) implemented by this library.
     #[error("Unsupported versioning scheme: {0}")]
     UnsupportedVersioningScheme(String),
 

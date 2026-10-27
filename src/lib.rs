@@ -1,15 +1,14 @@
 // Module declarations
 pub mod constraint;
 pub mod enums;
-pub mod error;
 pub mod range;
 pub mod schemes;
 
 pub use constraint::NativeVersionConverter;
 pub use constraint::VersionConstraint;
 pub use enums::comparator::Comparator;
+pub use enums::error::VersError;
 pub use enums::schemes::VersioningScheme;
-pub use error::VersError;
 pub use range::VersionRange;
 pub use range::dynamic::DynamicVersionRange;
 pub use range::vers::VersVersionRange;
