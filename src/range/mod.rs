@@ -1,6 +1,5 @@
 use crate::constraint::VersionType;
 use crate::{Comparator, VersError, VersionConstraint};
-
 pub trait VersionRange<V: VersionType> {
     fn versioning_scheme(&self) -> &str;
     fn contains(&self, version: V) -> Result<bool, VersError>;
@@ -75,3 +74,4 @@ pub trait VersionRange<V: VersionType> {
 
 pub mod dynamic;
 pub mod vers;
+pub(crate) mod wildcard;
