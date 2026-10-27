@@ -21,13 +21,13 @@
 //! It also implements `FromStr` for parsing a string into a `VersionRange` and
 //! `Display` for converting a `VersionRange` back to a string.
 
-use crate::{Comparator, VersError};
 use crate::Comparator::*;
 use crate::DynamicVersionRange;
 use crate::VersionConstraint;
 use crate::constraint::VersionType;
 use crate::is_ascii_vers_whitespace;
 use crate::range::VersionRange;
+use crate::{Comparator, VersError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::VecDeque;
