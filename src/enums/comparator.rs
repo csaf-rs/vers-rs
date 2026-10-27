@@ -8,7 +8,9 @@
 /// This enum represents the different types of comparators that can be used
 /// in version constraints. Each comparator defines how a version is compared
 /// to the constraint version.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, strum::Display)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, strum::Display,
+)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum Comparator {
     /// Equal (=) - The version must be exactly equal to the constraint version.

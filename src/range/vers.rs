@@ -22,9 +22,9 @@
 //! `Display` for converting a `VersionRange` back to a string.
 
 use crate::Comparator;
+use crate::Comparator::*;
 use crate::DynamicVersionRange;
 use crate::VersionConstraint;
-use crate::Comparator::*;
 use crate::constraint::VersionType;
 use crate::error::VersError;
 use crate::is_ascii_vers_whitespace;

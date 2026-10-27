@@ -1,7 +1,7 @@
-use crate::{Comparator, VersError};
 use crate::VersionConstraint;
 use crate::constraint::NativeVersionConverter;
 use crate::is_ascii_vers_whitespace;
+use crate::{Comparator, VersError};
 use debversion::Version as DebVersionInner;
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
