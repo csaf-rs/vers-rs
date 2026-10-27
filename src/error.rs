@@ -42,7 +42,7 @@ pub enum VersError {
     IncompatibleVersioningSchemes(String, String),
 
     /// The versioning scheme is not one of the schemes defined by the VERS
-    /// specification (see [`crate::VERSIONING_SCHEMES`]).
+    /// specification (see [`crate::VersioningScheme`]).
     #[error("Unknown versioning scheme: {0}")]
     UnknownVersioningScheme(String),
 

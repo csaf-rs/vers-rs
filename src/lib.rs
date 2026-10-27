@@ -7,6 +7,7 @@ pub mod schemes;
 
 pub use constraint::NativeVersionConverter;
 pub use constraint::VersionConstraint;
+pub use enums::schemes::VersioningScheme;
 pub use enums::comparator::Comparator;
 pub use error::VersError;
 pub use range::VersionRange;
@@ -39,45 +40,11 @@ const RESERVED_OPERATOR_TOKENS: [&str; 5] = [">", "<", "!=", "<=", ">="];
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-/// All versioning schemes (VERS **types**) defined by the [VERS specification](https://github.com/package-url/vers-spec).
-///
-/// This includes both the package ecosystem VERS types (named after their
-/// registered PURL type) and the general-purpose VERS types.
-///
-/// See <https://github.com/package-url/vers-spec/blob/main/docs/types/vers-types.md>
-/// for the authoritative list and descriptions of each scheme.
-pub const VERSIONING_SCHEMES: &[&str] = &[
-    // Package ecosystem VERS types
-    "alpm",
-    "apk",
-    "cargo",
-    "composer",
-    "cpan",
-    "dart",
-    "deb",
-    "gem",
-    "golang",
-    "hackage",
-    "maven",
-    "nuget",
-    "npm",
-    "pypi",
-    "rpm",
-    // General VERS types
-    "all",
-    "datetime",
-    "generic",
-    "intdot",
-    "lexicographic",
-    "none",
-    "semver",
-];
-
 /// Check if a string is a known versioning scheme (VERS **type**) as defined
 /// by the [VERS specification](https://github.com/package-url/vers-spec).
 ///
 /// The comparison is case-sensitive, matching the canonical scheme names
-/// listed in [`VERSIONING_SCHEMES`].
+/// represented by [`VersioningScheme`].
 ///
 /// # Examples
 ///
@@ -88,7 +55,7 @@ pub const VERSIONING_SCHEMES: &[&str] = &[
 /// assert!(!is_registered_scheme("not-a-scheme"));
 /// ```
 pub fn is_registered_scheme(scheme: &str) -> bool {
-    VERSIONING_SCHEMES.contains(&scheme)
+    scheme.parse::<VersioningScheme>().is_ok()
 }
 
 /// Parse a version range specifier string into a `DynamicVersionRange`.
