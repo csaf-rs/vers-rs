@@ -8,7 +8,7 @@ use crate::VersError;
 use crate::VersionConstraint;
 use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
-use crate::is_ascii_vers_whitespace;
+use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use derive_more::Display;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
