@@ -4,9 +4,8 @@
 //! `NativeVersionConverter` trait, supporting Cargo dependency specification rules
 //! based on semver rules.
 
-use crate::VersError;
+use crate::{Comparator, VersError};
 use crate::VersionConstraint;
-use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
 use crate::is_ascii_vers_whitespace;
 use derive_more::Display;

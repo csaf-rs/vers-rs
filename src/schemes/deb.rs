@@ -1,6 +1,5 @@
-use crate::VersError;
+use crate::{Comparator, VersError};
 use crate::VersionConstraint;
-use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
 use crate::is_ascii_vers_whitespace;
 use debversion::Version as DebVersionInner;

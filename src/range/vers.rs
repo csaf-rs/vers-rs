@@ -24,7 +24,7 @@
 use crate::Comparator;
 use crate::DynamicVersionRange;
 use crate::VersionConstraint;
-use crate::comparator::Comparator::*;
+use crate::Comparator::*;
 use crate::constraint::VersionType;
 use crate::error::VersError;
 use crate::is_ascii_vers_whitespace;
