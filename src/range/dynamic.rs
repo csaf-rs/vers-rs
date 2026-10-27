@@ -2,7 +2,7 @@ use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, semver::SemVer};
 use crate::{
-    VersError, VersVersionRange, VersionConstraint, is_ascii_vers_whitespace, is_registered_scheme,
+    VersError, VersVersionRange, VersionConstraint, VersioningScheme, is_ascii_vers_whitespace,
 };
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -135,19 +135,20 @@ impl DynamicVersionRange {
     /// assert!(range.contains("0.9".to_string()).unwrap());
     /// ```
     pub fn parse_native(scheme: &str, raw: &str) -> Result<Self, VersError> {
-        if !is_registered_scheme(scheme) {
-            return Err(VersError::UnknownVersioningScheme(scheme.to_string()));
-        }
+        let scheme_kind = VersioningScheme::from_str(scheme)
+            .map_err(|_| VersError::UnknownVersioningScheme(scheme.to_string()))?;
 
-        let inner = match scheme {
-            "semver" | "npm" => {
+        let inner = match scheme_kind {
+            VersioningScheme::Semver | VersioningScheme::Npm => {
                 DynamicVersionRangeInner::SemVer(SemVer::from_native_string(scheme, raw)?)
             }
-            "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(scheme, raw)?),
-            "cargo" => {
+            VersioningScheme::Deb => {
+                DynamicVersionRangeInner::Deb(DebVersion::from_native_string(scheme, raw)?)
+            }
+            VersioningScheme::Cargo => {
                 DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
             }
-            "intdot" => {
+            VersioningScheme::Intdot => {
                 DynamicVersionRangeInner::IntDot(IntDotVersion::from_native_string(scheme, raw)?)
             }
             _ => return Err(VersError::UnsupportedVersioningScheme(scheme.to_string())),
@@ -321,15 +322,16 @@ impl FromStr for DynamicVersionRange {
         // Extract the versioning scheme first to determine which type to use
         let (versioning_scheme, _) = DynamicVersionRange::extract_versioning_scheme(s)?;
 
-        if !is_registered_scheme(&versioning_scheme) {
-            return Err(VersError::UnknownVersioningScheme(versioning_scheme));
-        }
+        let scheme_kind = VersioningScheme::from_str(&versioning_scheme)
+            .map_err(|_| VersError::UnknownVersioningScheme(versioning_scheme.to_string()))?;
 
-        let inner = match versioning_scheme.as_str() {
-            "semver" | "npm" => DynamicVersionRangeInner::SemVer(s.parse()?),
-            "deb" => DynamicVersionRangeInner::Deb(s.parse()?),
-            "cargo" => DynamicVersionRangeInner::Cargo(s.parse()?),
-            "intdot" => DynamicVersionRangeInner::IntDot(s.parse()?),
+        let inner = match scheme_kind {
+            VersioningScheme::Semver | VersioningScheme::Npm => {
+                DynamicVersionRangeInner::SemVer(s.parse()?)
+            }
+            VersioningScheme::Deb => DynamicVersionRangeInner::Deb(s.parse()?),
+            VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(s.parse()?),
+            VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
         };
 
