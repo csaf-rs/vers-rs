@@ -381,22 +381,25 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
             .get("versioning_scheme")
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| serde::de::Error::missing_field("versioning_scheme"))?;
-        let inner = match scheme {
-            "semver" | "npm" => DynamicVersionRangeInner::SemVer(
+        let scheme_kind = scheme.parse::<VersioningScheme>().map_err(|_| {
+            serde::de::Error::custom(format!("unsupported versioning scheme: {scheme}"))
+        })?;
+        let inner = match scheme_kind {
+            VersioningScheme::Semver | VersioningScheme::Npm => DynamicVersionRangeInner::SemVer(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
-            "deb" => DynamicVersionRangeInner::Deb(
+            VersioningScheme::Deb => DynamicVersionRangeInner::Deb(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
-            "cargo" => DynamicVersionRangeInner::Cargo(
+            VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
-            "intdot" => DynamicVersionRangeInner::IntDot(
+            VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
-            other => {
+            _ => {
                 return Err(serde::de::Error::custom(format!(
-                    "unsupported versioning scheme: {other}"
+                    "unsupported versioning scheme: {scheme}"
                 )));
             }
         };
