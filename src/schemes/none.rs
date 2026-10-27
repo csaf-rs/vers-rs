@@ -17,6 +17,10 @@ const INVALID_RANGE_ERROR: &str = "the none scheme only accepts the '*' constrai
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "RawWildcardRange")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(
+    feature = "wasm",
+    tsify(type = "{ versioning_scheme: 'none'; constraints: VersionConstraint<string>[] }")
+)]
 pub struct NoneVersionRange;
 
 impl TryFrom<RawWildcardRange> for NoneVersionRange {
@@ -99,6 +103,18 @@ mod tests {
                 r#"{"versioning_scheme":"none","constraints":[]}"#
             )
             .is_err()
+        );
+    }
+
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn wasm_type_matches_serialized_shape() {
+        use tsify::Tsify;
+
+        assert!(
+            NoneVersionRange::DECL.ends_with(
+                "export type NoneVersionRange = { versioning_scheme: 'none'; constraints: VersionConstraint<string>[] };"
+            )
         );
     }
 }

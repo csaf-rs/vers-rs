@@ -16,6 +16,10 @@ const INVALID_RANGE_ERROR: &str = "the all scheme only accepts a single '*' cons
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "RawWildcardRange")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(
+    feature = "wasm",
+    tsify(type = "{ versioning_scheme: 'all'; constraints: VersionConstraint<string>[] }")
+)]
 pub struct AllVersionRange;
 
 impl AllVersionRange {
@@ -97,6 +101,18 @@ mod tests {
                 r#"{"versioning_scheme":"all","constraints":[]}"#
             )
             .is_err()
+        );
+    }
+
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn wasm_type_matches_serialized_shape() {
+        use tsify::Tsify;
+
+        assert!(
+            AllVersionRange::DECL.ends_with(
+                "export type AllVersionRange = { versioning_scheme: 'all'; constraints: VersionConstraint<string>[] };"
+            )
         );
     }
 }
