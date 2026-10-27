@@ -21,3 +21,21 @@ const ASCII_WHITESPACE_BYTEMAP: [bool; 256] = {
 pub(crate) const fn is_ascii_vers_whitespace(b: u8) -> bool {
     ASCII_WHITESPACE_BYTEMAP[b as usize]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::is_ascii_vers_whitespace;
+    use rstest::rstest;
+
+    #[rstest]
+    #[case(b' ', true)]
+    #[case(b'\t', true)]
+    #[case(b'\n', true)]
+    #[case(b'\r', true)]
+    #[case(0x0B, true)]
+    #[case(0x0C, true)]
+    #[case(b'a', false)]
+    fn test_is_ascii_vers_whitespace(#[case] input: u8, #[case] expected: bool) {
+        assert_eq!(is_ascii_vers_whitespace(input), expected);
+    }
+}
