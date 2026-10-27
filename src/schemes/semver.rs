@@ -18,7 +18,9 @@ pub const SEMVER_SCHEME: &str = "semver/npm";
 pub struct SemVer(Version);
 
 impl NativeVersionConverter for SemVer {
-    const SCHEME_NAME: &'static str = "semver";
+    fn scheme_name() -> &'static str {
+        "semver"
+    }
 }
 
 impl Default for SemVer {
