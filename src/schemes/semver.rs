@@ -1,5 +1,5 @@
-use crate::{VersError, VersioningScheme};
 use crate::constraint::NativeVersionConverter;
+use crate::{VersError, VersioningScheme};
 use derive_more::Display;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -19,7 +19,7 @@ pub struct SemVer(Version);
 
 impl NativeVersionConverter for SemVer {
     fn scheme_name() -> &'static str {
-       VersioningScheme::Semver.as_ref()
+        VersioningScheme::Semver.as_ref()
     }
 }
 
