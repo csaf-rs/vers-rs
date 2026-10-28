@@ -1,7 +1,7 @@
-use crate::{VersError, VersioningScheme};
 use crate::VersionConstraint;
-use crate::enums::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
+use crate::enums::comparator::Comparator;
+use crate::{VersError, VersioningScheme};
 use maven_version_range::MavenVersionRange;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;

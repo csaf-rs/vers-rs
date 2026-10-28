@@ -1,6 +1,9 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
-use crate::schemes::{cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, maven::MavenVersion, semver::SemVer};
+use crate::schemes::{
+    cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, maven::MavenVersion,
+    semver::SemVer,
+};
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{VersError, VersVersionRange, VersionConstraint, VersioningScheme};
 use std::fmt;
