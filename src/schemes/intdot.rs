@@ -46,16 +46,13 @@
 //! rather than being parsed into a fixed-width integer type, so arbitrarily
 //! large segments (far beyond `u64::MAX`) compare correctly without overflow.
 
-use crate::VersError;
 use crate::constraint::NativeVersionConverter;
+use crate::{VersError, VersioningScheme};
 use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
-
-/// Scheme identifier string for `intdot` versions.
-pub const INTDOT_SCHEME: &str = "intdot";
 
 /// An `intdot` version: one or more non-negative integers separated by dots.
 ///
@@ -106,7 +103,9 @@ pub const INTDOT_SCHEME: &str = "intdot";
 pub struct IntDotVersion(String);
 
 impl NativeVersionConverter for IntDotVersion {
-    const SCHEME_NAME: &'static str = INTDOT_SCHEME;
+    fn scheme_name() -> &'static str {
+        VersioningScheme::Intdot.as_ref()
+    }
 
     // `intdot` uses the standard vers operators, separator, wildcard, and
     // constraint-parsing logic (the trait defaults): since `FromStr` for
@@ -143,7 +142,7 @@ impl FromStr for IntDotVersion {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if s.is_empty() || !s.as_bytes()[0].is_ascii_digit() {
             return Err(VersError::InvalidVersionFormat(
-                INTDOT_SCHEME.to_string(),
+                Self::scheme_name().to_string(),
                 s.to_string(),
                 "version must start with an ASCII digit".to_string(),
             ));
@@ -161,7 +160,7 @@ impl FromStr for IntDotVersion {
             let after_dots = suffix.trim_start_matches('.');
             if after_dots.starts_with(|c: char| c.is_ascii_digit()) {
                 return Err(VersError::InvalidVersionFormat(
-                    INTDOT_SCHEME.to_string(),
+                    Self::scheme_name().to_string(),
                     s.to_string(),
                     "version must not contain consecutive dots".to_string(),
                 ));

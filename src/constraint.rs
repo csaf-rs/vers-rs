@@ -7,8 +7,9 @@
 //! and a version string. It defines a condition that a version must satisfy to be
 //! considered within a version range.
 
+use crate::VersVersionRange;
+use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{Comparator, VersError};
-use crate::{RESERVED_OPERATOR_TOKENS, VersVersionRange, is_ascii_vers_whitespace};
 use pct_str::PctStr;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -18,6 +19,8 @@ use std::str::FromStr;
 fn invalid_url_encoding_message(version: &str) -> String {
     format!("Invalid URL encoding: {}", version)
 }
+
+const RESERVED_OPERATOR_TOKENS: [&str; 5] = [">", "<", "!=", "<=", ">="];
 
 /// Trait for version types that support native (scheme-specific) syntax.
 ///
@@ -50,7 +53,7 @@ where
     Self::Err: Into<VersError>,
 {
     /// The vers scheme identifier for this version type (e.g. `"deb"`, `"semver"`).
-    const SCHEME_NAME: &'static str;
+    fn scheme_name() -> &'static str;
 
     /// The character used to separate multiple native constraints within a
     /// single native range string.
@@ -402,7 +405,9 @@ mod native_version_converter_tests {
     /// (`gte`, `lte`, `gt`, `lt`, `eq`) instead of the standard vers symbols,
     /// and disables the wildcard token entirely.
     impl NativeVersionConverter for TestVersion {
-        const SCHEME_NAME: &'static str = "test";
+        fn scheme_name() -> &'static str {
+            "test"
+        }
         const NATIVE_SEPARATOR: char = ';';
 
         fn native_operators() -> &'static [(&'static str, Comparator)] {
@@ -498,7 +503,9 @@ mod native_version_converter_tests {
         }
 
         impl NativeVersionConverter for ExplicitOnlyVersion {
-            const SCHEME_NAME: &'static str = "test-explicit-only";
+            fn scheme_name() -> &'static str {
+                "test-explicit-only"
+            }
 
             fn native_allows_implicit_equal() -> bool {
                 false
