@@ -1,6 +1,6 @@
 use crate::VersionConstraint;
 use crate::constraint::NativeVersionConverter;
-use crate::is_ascii_vers_whitespace;
+use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{Comparator, VersError, VersioningScheme};
 use debversion::Version as DebVersionInner;
 use derive_more::Display;

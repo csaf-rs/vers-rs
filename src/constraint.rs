@@ -7,8 +7,9 @@
 //! and a version string. It defines a condition that a version must satisfy to be
 //! considered within a version range.
 
+use crate::VersVersionRange;
+use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{Comparator, VersError};
-use crate::{RESERVED_OPERATOR_TOKENS, VersVersionRange, is_ascii_vers_whitespace};
 use pct_str::PctStr;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -18,6 +19,8 @@ use std::str::FromStr;
 fn invalid_url_encoding_message(version: &str) -> String {
     format!("Invalid URL encoding: {}", version)
 }
+
+const RESERVED_OPERATOR_TOKENS: [&str; 5] = [">", "<", "!=", "<=", ">="];
 
 /// Trait for version types that support native (scheme-specific) syntax.
 ///

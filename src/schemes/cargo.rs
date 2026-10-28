@@ -6,7 +6,7 @@
 
 use crate::VersionConstraint;
 use crate::constraint::NativeVersionConverter;
-use crate::is_ascii_vers_whitespace;
+use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{Comparator, VersError, VersioningScheme};
 use derive_more::Display;
 use semver::{Version, VersionReq};
