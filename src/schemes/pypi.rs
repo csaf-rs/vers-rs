@@ -1,17 +1,15 @@
 //! Version constraint type for the PyPI versioning scheme.
 //!
-use crate::VersError;
 use crate::VersionConstraint;
-use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
+use crate::enums::comparator::Comparator;
+use crate::{VersError, VersioningScheme};
 use pep440_rs::{Version as PypiVersionInner, VersionSpecifiers};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
-
-pub const PYPI_SCHEME: &str = "pypi";
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -49,7 +47,9 @@ impl<'de> Deserialize<'de> for PypiVersion {
 }
 
 impl NativeVersionConverter for PypiVersion {
-    const SCHEME_NAME: &'static str = PYPI_SCHEME;
+    fn scheme_name() -> &'static str {
+        VersioningScheme::Pypi.as_ref()
+    }
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
@@ -86,10 +86,7 @@ impl NativeVersionConverter for PypiVersion {
                         Comparator::GreaterThanOrEqual,
                         PypiVersion::from_str(&format!("{}.0", base))?,
                     ),
-                    VersionConstraint::new(
-                        Comparator::LessThan,
-                        PypiVersion::from_str(&upper)?,
-                    ),
+                    VersionConstraint::new(Comparator::LessThan, PypiVersion::from_str(&upper)?),
                 ]);
             }
         }
@@ -110,7 +107,10 @@ impl NativeVersionConverter for PypiVersion {
                 let base_ver = PypiVersion::from_str(&ver_str)?;
                 let upper_ver_str = calculate_pypi_compatible_upper_bound(&ver_str);
                 let upper_ver = PypiVersion::from_str(&upper_ver_str)?;
-                constraints.push(VersionConstraint::new(Comparator::GreaterThanOrEqual, base_ver));
+                constraints.push(VersionConstraint::new(
+                    Comparator::GreaterThanOrEqual,
+                    base_ver,
+                ));
                 constraints.push(VersionConstraint::new(Comparator::LessThan, upper_ver));
                 continue;
             }
@@ -169,7 +169,7 @@ impl FromStr for PypiVersion {
                 let base = clean.split('-').next().unwrap_or(clean);
                 PypiVersionInner::from_str(base).map_err(|e| {
                     VersError::InvalidVersionFormat(
-                        PYPI_SCHEME.to_string(),
+                        Self::scheme_name().to_string(),
                         s.to_string(),
                         e.to_string(),
                     )
@@ -220,17 +220,17 @@ fn calculate_pypi_compatible_upper_bound(v: &str) -> String {
     let core = v.split(['-', '+']).next().unwrap_or(v);
     let parts: Vec<&str> = core.split('.').collect();
 
-    if parts.len() >= 2 {
-        if let Ok(mut minor) = parts[parts.len() - 2].parse::<u64>() {
-            minor += 1;
-            let minor_str = minor.to_string();
-            let mut new_parts: Vec<String> = parts[..parts.len() - 2]
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
-            new_parts.push(minor_str);
-            return new_parts.join(".");
-        }
+    if parts.len() >= 2
+        && let Ok(mut minor) = parts[parts.len() - 2].parse::<u64>()
+    {
+        minor += 1;
+        let minor_str = minor.to_string();
+        let mut new_parts: Vec<String> = parts[..parts.len() - 2]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        new_parts.push(minor_str);
+        return new_parts.join(".");
     }
     v.to_string()
 }
