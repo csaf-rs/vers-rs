@@ -1,4 +1,4 @@
-use crate::VersError;
+use crate::{VersError, VersioningScheme};
 use crate::constraint::NativeVersionConverter;
 use derive_more::Display;
 use semver::Version;
@@ -19,7 +19,7 @@ pub struct SemVer(Version);
 
 impl NativeVersionConverter for SemVer {
     fn scheme_name() -> &'static str {
-        "semver"
+       VersioningScheme::Semver.as_ref()
     }
 }
 
@@ -73,6 +73,7 @@ impl FromStr for SemVer {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(SemVer(Version::parse(s).map_err(|e| {
+            // TODO: open issue to reconsider this #103
             VersError::InvalidVersionFormat(SEMVER_SCHEME.to_string(), s.to_string(), e.to_string())
         })?))
     }
