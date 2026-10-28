@@ -1,10 +1,6 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
-use crate::schemes::{cargo::CargoVersion, deb::DebVersion, maven::MavenVersion, semver::SemVer};
-use crate::{
-    VersError, VersVersionRange, VersionConstraint, is_ascii_vers_whitespace, is_registered_scheme,
-};
-use crate::schemes::{cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, semver::SemVer};
+use crate::schemes::{cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, maven::MavenVersion, semver::SemVer};
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{VersError, VersVersionRange, VersionConstraint, VersioningScheme};
 use std::fmt;
@@ -154,8 +150,9 @@ impl DynamicVersionRange {
             VersioningScheme::Cargo => {
                 DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
             }
-            "maven" => {
+            VersioningScheme::Maven => {
                 DynamicVersionRangeInner::Maven(MavenVersion::from_native_string(scheme, raw)?)
+            }
             VersioningScheme::Intdot => {
                 DynamicVersionRangeInner::IntDot(IntDotVersion::from_native_string(scheme, raw)?)
             }
@@ -255,6 +252,7 @@ impl VersionRange<String> for DynamicVersionRange {
             }
             DynamicVersionRangeInner::Maven(range) => {
                 range.contains(version_str.parse::<MavenVersion>()?)
+            }
             DynamicVersionRangeInner::IntDot(range) => {
                 range.contains(version_str.parse::<IntDotVersion>()?)
             }
@@ -511,7 +509,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0%3X1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]
@@ -519,7 +517,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:cargo/%091.2.3".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]

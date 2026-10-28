@@ -1,6 +1,6 @@
-use crate::VersError;
+use crate::{VersError, VersioningScheme};
 use crate::VersionConstraint;
-use crate::comparator::Comparator;
+use crate::enums::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
 use maven_version_range::MavenVersionRange;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -8,8 +8,6 @@ use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
-
-pub const MAVEN_SCHEME: &str = "maven";
 
 #[derive(Clone, Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -45,7 +43,9 @@ impl<'de> Deserialize<'de> for MavenVersion {
 }
 
 impl NativeVersionConverter for MavenVersion {
-    const SCHEME_NAME: &'static str = MAVEN_SCHEME;
+    fn scheme_name() -> &'static str {
+        VersioningScheme::Maven.as_ref()
+    }
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
