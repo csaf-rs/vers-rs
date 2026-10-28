@@ -1,6 +1,9 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
-use crate::schemes::{cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, semver::SemVer};
+use crate::schemes::{
+    cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, maven::MavenVersion,
+    semver::SemVer,
+};
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{VersError, VersVersionRange, VersionConstraint, VersioningScheme};
 use std::fmt;
@@ -24,6 +27,8 @@ enum DynamicVersionRangeInner {
     Deb(VersVersionRange<DebVersion>),
     /// Cargo-based range ("cargo" scheme)
     Cargo(VersVersionRange<CargoVersion>),
+    /// Maven-based range ("maven" scheme)
+    Maven(VersVersionRange<MavenVersion>),
     /// Generic dot-separated-integers range ("intdot" scheme)
     IntDot(VersVersionRange<IntDotVersion>),
 }
@@ -102,6 +107,7 @@ macro_rules! dispatch_inner {
             DynamicVersionRangeInner::SemVer($range) => $expr,
             DynamicVersionRangeInner::Deb($range) => $expr,
             DynamicVersionRangeInner::Cargo($range) => $expr,
+            DynamicVersionRangeInner::Maven($range) => $expr,
             DynamicVersionRangeInner::IntDot($range) => $expr,
         }
     };
@@ -146,6 +152,9 @@ impl DynamicVersionRange {
             }
             VersioningScheme::Cargo => {
                 DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
+            }
+            VersioningScheme::Maven => {
+                DynamicVersionRangeInner::Maven(MavenVersion::from_native_string(scheme, raw)?)
             }
             VersioningScheme::Intdot => {
                 DynamicVersionRangeInner::IntDot(IntDotVersion::from_native_string(scheme, raw)?)
@@ -243,6 +252,9 @@ impl VersionRange<String> for DynamicVersionRange {
             }
             DynamicVersionRangeInner::Cargo(range) => {
                 range.contains(version_str.parse::<CargoVersion>()?)
+            }
+            DynamicVersionRangeInner::Maven(range) => {
+                range.contains(version_str.parse::<MavenVersion>()?)
             }
             DynamicVersionRangeInner::IntDot(range) => {
                 range.contains(version_str.parse::<IntDotVersion>()?)
@@ -411,7 +423,6 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
     use std::mem::discriminant;
 
     use rstest::rstest;
@@ -485,7 +496,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0>1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::UnencodedOperator(_));
+        assert!(matches!(err, VersError::UnencodedOperator(_)));
     }
 
     #[test]
@@ -493,7 +504,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::MissingVersionInConstraint);
+        assert!(matches!(err, VersError::MissingVersionInConstraint));
     }
 
     #[test]
@@ -501,7 +512,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0%3X1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]
@@ -509,7 +520,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:cargo/%091.2.3".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]
