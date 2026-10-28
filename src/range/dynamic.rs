@@ -2,7 +2,7 @@ use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion, semver::SemVer};
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
-use crate::{VersError, VersVersionRange, VersionConstraint, is_registered_scheme};
+use crate::{VersError, VersVersionRange, VersionConstraint, VersioningScheme};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
@@ -134,19 +134,20 @@ impl DynamicVersionRange {
     /// assert!(range.contains("0.9".to_string()).unwrap());
     /// ```
     pub fn parse_native(scheme: &str, raw: &str) -> Result<Self, VersError> {
-        if !is_registered_scheme(scheme) {
-            return Err(VersError::UnknownVersioningScheme(scheme.to_string()));
-        }
+        let scheme_kind = VersioningScheme::from_str(scheme)
+            .map_err(|_| VersError::UnknownVersioningScheme(scheme.to_string()))?;
 
-        let inner = match scheme {
-            "semver" | "npm" => {
+        let inner = match scheme_kind {
+            VersioningScheme::Semver | VersioningScheme::Npm => {
                 DynamicVersionRangeInner::SemVer(SemVer::from_native_string(scheme, raw)?)
             }
-            "deb" => DynamicVersionRangeInner::Deb(DebVersion::from_native_string(scheme, raw)?),
-            "cargo" => {
+            VersioningScheme::Deb => {
+                DynamicVersionRangeInner::Deb(DebVersion::from_native_string(scheme, raw)?)
+            }
+            VersioningScheme::Cargo => {
                 DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
             }
-            "intdot" => {
+            VersioningScheme::Intdot => {
                 DynamicVersionRangeInner::IntDot(IntDotVersion::from_native_string(scheme, raw)?)
             }
             _ => return Err(VersError::UnsupportedVersioningScheme(scheme.to_string())),
@@ -320,15 +321,16 @@ impl FromStr for DynamicVersionRange {
         // Extract the versioning scheme first to determine which type to use
         let (versioning_scheme, _) = DynamicVersionRange::extract_versioning_scheme(s)?;
 
-        if !is_registered_scheme(&versioning_scheme) {
-            return Err(VersError::UnknownVersioningScheme(versioning_scheme));
-        }
+        let scheme_kind = VersioningScheme::from_str(&versioning_scheme)
+            .map_err(|_| VersError::UnknownVersioningScheme(versioning_scheme.to_string()))?;
 
-        let inner = match versioning_scheme.as_str() {
-            "semver" | "npm" => DynamicVersionRangeInner::SemVer(s.parse()?),
-            "deb" => DynamicVersionRangeInner::Deb(s.parse()?),
-            "cargo" => DynamicVersionRangeInner::Cargo(s.parse()?),
-            "intdot" => DynamicVersionRangeInner::IntDot(s.parse()?),
+        let inner = match scheme_kind {
+            VersioningScheme::Semver | VersioningScheme::Npm => {
+                DynamicVersionRangeInner::SemVer(s.parse()?)
+            }
+            VersioningScheme::Deb => DynamicVersionRangeInner::Deb(s.parse()?),
+            VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(s.parse()?),
+            VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
         };
 
@@ -378,22 +380,25 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
             .get("versioning_scheme")
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| serde::de::Error::missing_field("versioning_scheme"))?;
-        let inner = match scheme {
-            "semver" | "npm" => DynamicVersionRangeInner::SemVer(
+        let scheme_kind = scheme.parse::<VersioningScheme>().map_err(|_| {
+            serde::de::Error::custom(format!("unsupported versioning scheme: {scheme}"))
+        })?;
+        let inner = match scheme_kind {
+            VersioningScheme::Semver | VersioningScheme::Npm => DynamicVersionRangeInner::SemVer(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
-            "deb" => DynamicVersionRangeInner::Deb(
+            VersioningScheme::Deb => DynamicVersionRangeInner::Deb(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
-            "cargo" => DynamicVersionRangeInner::Cargo(
+            VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
-            "intdot" => DynamicVersionRangeInner::IntDot(
+            VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
-            other => {
+            _ => {
                 return Err(serde::de::Error::custom(format!(
-                    "unsupported versioning scheme: {other}"
+                    "unsupported versioning scheme: {scheme}"
                 )));
             }
         };
