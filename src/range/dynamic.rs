@@ -411,7 +411,6 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
     use std::mem::discriminant;
 
     use rstest::rstest;
@@ -485,7 +484,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0>1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::UnencodedOperator(_));
+        assert!(matches!(err, VersError::UnencodedOperator(_)));
     }
 
     #[test]
@@ -493,7 +492,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::MissingVersionInConstraint);
+        assert!(matches!(err, VersError::MissingVersionInConstraint));
     }
 
     #[test]
@@ -501,7 +500,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0%3X1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]
@@ -509,7 +508,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:cargo/%091.2.3".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]
