@@ -7,21 +7,17 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Update rustup
         run: rustup update stable --no-self-update
-      - name: Format check
-        run: |
-          rustup component add rustfmt
-          cargo fmt --all -- --check -l
+      - name: Run shared format, clippy and doc checks
+        uses: csaf-rs/shared-workflows/.github/actions/rust-checks@c2f5f2066f1d96c12c1e33a8dea1fceb5eb37366 # v1.12.0
+        with:
+          doc-extra-args: "--all-features"
       - name: Prepare targets
         run: |
           rustup target add wasm32-unknown-unknown
           rustup target add x86_64-unknown-linux-gnu
-      - name: Clippy check
-        run: |
-          rustup component add clippy
-          cargo clippy --locked --all-targets --workspace -- -D warnings
       - name: Run tests
         run: cargo test --locked --all-targets --workspace --verbose
       - name: Build native crates
@@ -30,16 +26,21 @@ jobs:
         run: cargo build --workspace --no-default-features --verbose
       - name: Build wasm target
         run: cargo build --locked --workspace --target wasm32-unknown-unknown --verbose
-      - name: Cargo publish dry-run
-        run: cargo publish --locked --dry-run
+      - name: Publish dry-run
+        uses: csaf-rs/shared-workflows/.github/actions/cargo-publish-dry-run@c2f5f2066f1d96c12c1e33a8dea1fceb5eb37366 # v1.12.0
       - name: Set up Node
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
       - name: Install wasm-pack
         run: cargo install wasm-pack --locked
+      - name: Run wasm-pack tests
+        run: wasm-pack test --node --features wasm
       - name: Build wasm package and npm dry-run
         run: |
-          wasm-pack build --out-dir pkg --scope csaf-rs
+          wasm-pack build --out-dir pkg --scope csaf-rs --features wasm
           cd pkg
           npm pack --dry-run
+
+  coverage:
+    uses: csaf-rs/shared-workflows/.github/workflows/rust-coverage.yml@c2f5f2066f1d96c12c1e33a8dea1fceb5eb37366 # v1.12.0

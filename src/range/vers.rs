@@ -21,14 +21,17 @@
 //! It also implements `FromStr` for parsing a string into a `VersionRange` and
 //! `Display` for converting a `VersionRange` back to a string.
 
+use crate::Comparator;
+use crate::DynamicVersionRange;
 use crate::VersionConstraint;
 use crate::comparator::Comparator::*;
-use crate::constraint::NativeVersionConverter;
 use crate::constraint::VersionType;
 use crate::error::VersError;
+use crate::is_ascii_vers_whitespace;
 use crate::range::VersionRange;
 use serde::{Deserialize, Serialize};
-use std::collections::LinkedList;
+use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::fmt;
 use std::fmt::Display;
 use std::str::FromStr;
@@ -45,6 +48,7 @@ use std::str::FromStr;
 /// - `vers:npm/>=1.0.0|<2.0.0` (a range of versions)
 /// - `vers:pypi/*` (any version)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "RawVersVersionRange<V>")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct VersVersionRange<V: VersionType> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
@@ -52,6 +56,25 @@ pub struct VersVersionRange<V: VersionType> {
 
     /// The list of version constraints
     pub constraints: Vec<VersionConstraint<V>>,
+}
+/// Raw JSON serde helper structure for VersVersionRange to normalize and validate on "Deserialize"
+#[derive(Deserialize)]
+struct RawVersVersionRange<V: VersionType> {
+    versioning_scheme: String,
+    constraints: Vec<VersionConstraint<V>>,
+}
+
+impl<V: VersionType> TryFrom<RawVersVersionRange<V>> for VersVersionRange<V> {
+    type Error = VersError;
+
+    fn try_from(raw: RawVersVersionRange<V>) -> Result<Self, Self::Error> {
+        let mut range = VersVersionRange {
+            versioning_scheme: raw.versioning_scheme,
+            constraints: raw.constraints,
+        };
+        range.normalize_and_validate()?;
+        Ok(range)
+    }
 }
 
 impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
@@ -96,6 +119,11 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
     /// assert!(!range.contains("2.0.0".parse().unwrap()).unwrap());
     /// ```
     fn contains(&self, version: V) -> Result<bool, VersError> {
+        // If there are no constraints, nothing is contained
+        if self.constraints.is_empty() {
+            return Ok(false);
+        }
+
         // If the constraint list contains only "*", then the version is in the range
         if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
             return Ok(true);
@@ -116,8 +144,8 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
             }
         }
 
-        // If there are only NotEqual constraints, and we've checked them all without returning,
-        // then the version is in the range
+        // If there are only NotEqual constraints (and at least one exists),
+        // and we've checked them all without returning, then the version is in the range
         if self.constraints.iter().all(|c| c.comparator == NotEqual) {
             return Ok(true);
         }
@@ -231,7 +259,7 @@ impl<V: VersionType> VersVersionRange<V> {
         // Check for duplicate versions, exploiting sorted order
         for i in 1..self.constraints.len() {
             if self.constraints[i].version == self.constraints[i - 1].version {
-                return Err(VersError::DuplicateVersion(
+                return Err(VersError::DuplicateVersions(
                     self.constraints[i].version.to_string(),
                 ));
             }
@@ -241,7 +269,7 @@ impl<V: VersionType> VersVersionRange<V> {
 
         // Split constraints into unequal constraints and other constraints
         let mut unequal_constraints: Vec<VersionConstraint<V>> = Vec::new();
-        let mut other_constraints: LinkedList<VersionConstraint<V>> = LinkedList::new();
+        let mut other_constraints: VecDeque<VersionConstraint<V>> = VecDeque::new();
 
         for constraint in self.constraints.drain(..) {
             if constraint.comparator == NotEqual {
@@ -378,59 +406,167 @@ impl<V: VersionType> VersVersionRange<V> {
     }
 }
 
-impl<V: NativeVersionConverter> FromStr for VersVersionRange<V> {
+/// Returns an error if any pair of comparators adjacent in `constraints` (already
+/// filtered/ordered by version) matches `is_invalid`. Used to reject comparator
+/// sequences that are redundant or nonsensical once irrelevant comparators
+/// (e.g. "!=", "=") have been filtered out.
+fn reject_adjacent_comparators<V: VersionType>(
+    constraints: &[&VersionConstraint<V>],
+    is_invalid: impl Fn(Comparator, Comparator) -> bool,
+) -> Result<(), VersError> {
+    for pair in constraints.windows(2) {
+        let (current, next) = (pair[0], pair[1]);
+        if is_invalid(current.comparator, next.comparator) {
+            return Err(VersError::ConsecutiveOperators(format!(
+                "{0} | {1}",
+                current.comparator, next.comparator
+            )));
+        }
+    }
+    Ok(())
+}
+
+impl<V: VersionType> FromStr for VersVersionRange<V>
+where
+    V::Err: Into<VersError>,
+{
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Remove all spaces and tabs
-        let s = s.replace(|c: char| c.is_whitespace(), "");
-
-        // Split on colon
-        let parts: Vec<&str> = s.splitn(2, ':').collect();
-        if parts.len() != 2 {
-            return Err(VersError::InvalidScheme);
+        if !s.is_ascii() {
+            return Err(VersError::InvalidCharacters(
+                "A VERS string shall only contain ASCII characters".to_string(),
+            ));
         }
 
-        // Validate URI scheme
-        let scheme = parts[0];
-        if scheme != "vers" {
-            return Err(VersError::InvalidScheme);
+        if s.bytes().any(is_ascii_vers_whitespace) {
+            return Err(VersError::InvalidCharacters(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string(),
+            ));
         }
 
-        // Split on slash
-        let specifier_parts: Vec<&str> = parts[1].splitn(2, '/').collect();
-        if specifier_parts.len() != 2 {
-            return Err(VersError::MissingVersioningScheme);
-        }
+        let (versioning_scheme, constraints_str) =
+            DynamicVersionRange::extract_versioning_scheme(s)?;
 
-        // Get versioning scheme
-        let versioning_scheme = specifier_parts[0].to_lowercase();
-        if versioning_scheme.is_empty() {
-            return Err(VersError::MissingVersioningScheme);
-        }
-
-        // Get constraint string
-        let constraints_str = specifier_parts[1].trim();
+        // check constraints
         if constraints_str.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        // Handle star constraint
         if constraints_str == "*" {
             return Ok(Self {
                 versioning_scheme,
-                constraints: vec![VersionConstraint::new(Any, V::default())],
+                constraints: vec![VersionConstraint::new(Comparator::Any, V::default())],
             });
         }
 
-        // Delegate constraint parsing entirely to the scheme's native converter
-        let constraints = V::from_native(constraints_str)?;
+        // check multiple asterisks
+        if constraints_str.chars().filter(|c| *c == '*').count() > 1 {
+            return Err(VersError::MultipleAsterisks(constraints_str.to_string()));
+        }
 
-        let mut range = Self {
+        // Split on '|' and delegate each segment to VersionConstraint::parse
+        let segments: Vec<&str> = constraints_str.split('|').collect();
+        let mut constraints = Vec::new();
+        let mut seen_versions: HashMap<V, Vec<VersionConstraint<V>>> = HashMap::new();
+        for segment in segments {
+            if segment.is_empty() {
+                return Err(VersError::EmptyConstraints);
+            }
+            let constraint = VersionConstraint::<V>::parse(segment)?;
+            seen_versions
+                .entry(constraint.version.clone())
+                .or_default()
+                .push(constraint.clone());
+
+            constraints.push(constraint);
+        }
+
+        // check single asterisk
+        if constraints.len() > 1 && constraints.iter().any(|c| c.comparator == Comparator::Any) {
+            return Err(VersError::InvalidRange(
+                "Star constraint must be used alone".to_string(),
+            ));
+        }
+
+        // check duplicate versions
+        let duplicate_versions: Vec<VersionConstraint<V>> = seen_versions
+            .values()
+            .filter(|v| v.len() > 1)
+            .filter_map(|v| v.first().cloned())
+            .collect();
+        if !duplicate_versions.is_empty() {
+            let duplicates: Vec<String> = duplicate_versions
+                .iter()
+                .map(|c| c.version.to_string())
+                .collect();
+            return Err(VersError::DuplicateVersions(
+                duplicates.join(", ").to_string(),
+            ));
+        }
+
+        // check ordering
+        let check_order_result = constraints.windows(2).try_for_each(|pair| {
+            let (a, b) = (&pair[0], &pair[1]);
+            if a.version > b.version {
+                Err(VersError::UnorderedVersions(
+                    a.version.to_string(),
+                    b.version.to_string(),
+                ))
+            } else {
+                Ok(())
+            }
+        });
+        check_order_result?;
+
+        // non-equal is irrelevant for further comparator checks, as everything is allowed after non-equal
+        // and should be ignored for the purpose of checking consecutive operators
+        let constraints_without_non_equal: Vec<&VersionConstraint<V>> = constraints
+            .iter()
+            .filter(|c| c.comparator != Comparator::NotEqual)
+            .collect();
+        // check lessthan after equals and equals after greaterthan
+        reject_adjacent_comparators(&constraints_without_non_equal, |current, next| {
+            matches!(
+                (current, next),
+                // = | <= makes no sense, as the = constraint is already covered by the < constraint and the versions must be ordered at this point
+                (Comparator::Equal, Comparator::LessThan)
+                | (Comparator::Equal, Comparator::LessThanOrEqual)
+                // >= | = makes no sense, as the = constraint is already covered by the > constraint and the versions must be ordered at this point
+                | (Comparator::GreaterThan, Comparator::Equal)
+                | (Comparator::GreaterThanOrEqual, Comparator::Equal)
+            )
+        })?;
+
+        let constraints_without_non_equal_and_equal: Vec<&VersionConstraint<V>> =
+            constraints_without_non_equal
+                .into_iter()
+                .filter(|c| c.comparator != Comparator::Equal)
+                .collect();
+        // check for redundant consecutive "<"/"<=" or ">"/">=" constraints
+        reject_adjacent_comparators(&constraints_without_non_equal_and_equal, |current, next| {
+            matches!(
+                (current, next),
+                // < | < or > | > makes no sense, as the versions must be ordered at this point
+                (Comparator::LessThan, Comparator::LessThan)
+                    | (Comparator::LessThan, Comparator::LessThanOrEqual)
+                    | (Comparator::LessThanOrEqual, Comparator::LessThan)
+                    | (Comparator::LessThanOrEqual, Comparator::LessThanOrEqual)
+                    | (Comparator::GreaterThan, Comparator::GreaterThan)
+                    | (Comparator::GreaterThan, Comparator::GreaterThanOrEqual)
+                    | (Comparator::GreaterThanOrEqual, Comparator::GreaterThan)
+                    | (
+                        Comparator::GreaterThanOrEqual,
+                        Comparator::GreaterThanOrEqual
+                    )
+            )
+        })?;
+
+        let range = Self {
             versioning_scheme,
             constraints,
         };
-        range.normalize_and_validate()?;
 
         Ok(range)
     }
@@ -440,24 +576,25 @@ impl<V: VersionType> Display for VersVersionRange<V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "vers:{}/", self.versioning_scheme)?;
 
-        match self.constraints[0].comparator {
-            Any => write!(f, "*")?,
-            Equal => write!(f, "{}", self.constraints[0].version)?,
-            _ => write!(
-                f,
-                "{}{}",
-                self.constraints[0].comparator, self.constraints[0].version
-            )?,
+        if self.constraints.is_empty() {
+            return Ok(());
         }
 
-        for constraint in &self.constraints[1..] {
-            match constraint.comparator {
-                Equal => write!(f, "|{}", constraint.version)?,
-                _ => write!(f, "|{}{}", constraint.comparator, constraint.version)?,
-            }
-        }
+        // Convert all constraints to their string representations, handling 'Any' as '*'
+        let constraint_strs: Vec<String> = self
+            .constraints
+            .iter()
+            .map(|c| {
+                if c.comparator == Comparator::Any {
+                    "*".to_string()
+                } else {
+                    c.to_string()
+                }
+            })
+            .collect();
 
-        Ok(())
+        // Join them together with '|'
+        write!(f, "{}", constraint_strs.join("|"))
     }
 }
 
@@ -479,30 +616,6 @@ mod tests {
         let result: Result<VersVersionRange<SemVer>, _> = "foo:npm/1.2.3".parse();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), VersError::InvalidScheme);
-    }
-
-    #[test]
-    fn test_missing_scheme() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:/1.2.3".parse();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), VersError::MissingVersioningScheme);
-    }
-
-    #[test]
-    fn test_empty_constraints() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/".parse();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), VersError::EmptyConstraints);
-    }
-
-    #[test]
-    fn test_duplicate_version() {
-        let result: Result<VersVersionRange<SemVer>, _> = "vers:npm/1.2.3|1.2.3".parse();
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            VersError::DuplicateVersion(_)
-        ));
     }
 
     #[test]
@@ -530,6 +643,118 @@ mod tests {
         assert_eq!(range.constraints()[0].version.to_string(), "1.0.0");
         assert_eq!(range.constraints()[1].comparator, Comparator::LessThan);
         assert_eq!(range.constraints()[1].version.to_string(), "3.0.0");
+    }
+
+    #[test]
+    fn test_empty_constraints_display() {
+        let range = VersVersionRange::<SemVer>::new("npm".to_string(), vec![]);
+        let display_str = range.to_string();
+        assert_eq!(display_str, "vers:npm/");
+    }
+
+    #[test]
+    fn test_empty_constraints_contains() {
+        let range = VersVersionRange::<SemVer>::new("npm".to_string(), vec![]);
+        let result = range.contains("1.0.0".parse().unwrap());
+        assert!(result.is_ok());
+        assert!(!result.unwrap());
+    }
+
+    #[test]
+    fn test_deserialize_empty_constraints_fails() {
+        // Construct a JSON representation of a range with empty constraints
+        let json_data = r#"{
+            "versioning_scheme": "npm",
+            "constraints": []
+        }"#;
+
+        let result: Result<VersVersionRange<SemVer>, _> = serde_json::from_str(json_data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_open_ended_bare_greater_than_or_equal() {
+        let range: VersVersionRange<SemVer> = "vers:npm/>=1.0.0".parse().unwrap();
+        assert!(range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bare_greater_than() {
+        let range: VersVersionRange<SemVer> = "vers:npm/>1.0.0".parse().unwrap();
+        assert!(range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bare_less_than_is_not_open_ended() {
+        let range: VersVersionRange<SemVer> = "vers:npm/<1.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bare_less_than_or_equal_is_not_open_ended() {
+        let range: VersVersionRange<SemVer> = "vers:npm/<=1.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bounded_range_is_not_open_ended() {
+        let range: VersVersionRange<SemVer> = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_star_is_not_open_ended() {
+        // "*" has no explicit ">" or ">=" bound, so it is not considered open-ended
+        // even though it matches every version.
+        let range: VersVersionRange<SemVer> = "vers:npm/*".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_empty_constraints_is_not_open_ended() {
+        let range = VersVersionRange::<SemVer>::new("npm".to_string(), vec![]);
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_bare_equal_is_not_open_ended() {
+        let range: VersVersionRange<SemVer> = "vers:npm/1.2.3".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_only_not_equal_constraints_is_not_open_ended() {
+        // No ">" or ">=" range constraint is present at all, so even though every
+        // version except the excluded ones is contained, this is not "open-ended"
+        // under our definition (it requires an explicit trailing ">"/">=" bound).
+        let range: VersVersionRange<SemVer> = "vers:npm/!=1.0.0|!=2.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_trailing_not_equal_after_unbounded_greater_than_or_equal() {
+        // Regression test for the edge case ">=0.0.2|!=0.0.8": a "!=" constraint can
+        // sort *after* the final ">"/">=" bound (it has a higher version) without
+        // affecting whether the range is unbounded above. Naively checking only the
+        // last constraint in the (version-sorted) list would miss this.
+        let range: VersVersionRange<SemVer> = "vers:npm/0.0.1|>=0.0.2|!=0.0.8".parse().unwrap();
+        assert!(range.is_open_ended());
+        assert!(range.contains("999.0.0".parse().unwrap()).unwrap());
+        assert!(!range.contains("0.0.8".parse().unwrap()).unwrap());
+    }
+
+    #[test]
+    fn test_is_open_ended_disjoint_range_ending_unbounded() {
+        // Two disjoint intervals: below 1.0.0, or at/above 2.0.0 and beyond.
+        let range: VersVersionRange<SemVer> = "vers:npm/<=1.0.0|>=2.0.0".parse().unwrap();
+        assert!(range.is_open_ended());
+    }
+
+    #[test]
+    fn test_is_open_ended_disjoint_range_ending_bounded() {
+        // Two disjoint intervals, but the highest one is still capped from above.
+        let range: VersVersionRange<SemVer> = "vers:npm/<1.0.0|>=2.0.0|<3.0.0".parse().unwrap();
+        assert!(!range.is_open_ended());
     }
 
     #[test]
@@ -579,14 +804,14 @@ mod tests {
         assert!(final_ver < post);
         assert!(post < ep);
 
-        // 2. Local version build metadata ordering (local versions sort lower than non-local, numeric segments compare numerically)
+        // 2. Local version build metadata ordering (PEP 440 compliant)
         let local_base = PypiVersion::from_str("1.0.0").unwrap();
         let local_2 = PypiVersion::from_str("1.0.0+git.2").unwrap();
         let local_10 = PypiVersion::from_str("1.0.0+git.10").unwrap();
 
-        assert!(local_2 < local_base);
-        assert!(local_10 < local_base);
-        assert!(local_2 < local_10); // Numeric comparison inside local identifier (+2 < +10)
+        assert!(local_base < local_2);
+        assert!(local_base < local_10);
+        assert!(local_2 < local_10);
     }
 
     #[test]

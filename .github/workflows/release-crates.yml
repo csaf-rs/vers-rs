@@ -6,18 +6,9 @@ on:
 
 jobs:
   publish-crates:
-    runs-on: ubuntu-latest
-    environment: release
     permissions:
       contents: read
       id-token: write
-    steps:
-      - uses: actions/checkout@v7
-      - name: Prepare targets
-        run: |
-          rustup target add x86_64-unknown-linux-gnu
-      - uses: rust-lang/crates-io-auth-action@v1
-        id: auth
-      - run: cargo publish
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+    uses: csaf-rs/shared-workflows/.github/workflows/cargo-publish.yml@c2f5f2066f1d96c12c1e33a8dea1fceb5eb37366 # v1.12.0
+    with:
+      environment: release
