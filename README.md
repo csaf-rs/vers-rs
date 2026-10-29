@@ -38,6 +38,8 @@ assert!(!dynamic_range.contains("2.0.0".to_string()).unwrap());
 - Debian
 - Cargo
 - Intdot
+- all
+- none
 
 ## Development
 
