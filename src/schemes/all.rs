@@ -3,75 +3,76 @@
 //! The VERS specification defines `vers:all/*` as the sole valid form for a
 //! range containing every version.
 
-use crate::range::VersionRange;
-use crate::range::wildcard::{RawWildcardRange, WildcardRange};
-use crate::{VersError, VersionConstraint};
+use crate::{NativeVersionConverter, VersError, VersionConstraint, VersioningScheme};
 use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-pub const ALL_SCHEME: &str = "all";
 const INVALID_RANGE_ERROR: &str = "the all scheme only accepts a single '*' constraint";
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(try_from = "RawWildcardRange")]
+#[derive(Debug, Clone, Hash, PartialOrd, Ord, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(
-    feature = "wasm",
-    tsify(type = "{ versioning_scheme: 'all'; constraints: VersionConstraint<string>[] }")
-)]
-pub struct AllVersionRange;
+pub struct AllVersion;
 
-impl AllVersionRange {
-    pub fn parse(raw: &str) -> Result<Self, VersError> {
-        WildcardRange::parse_constraint(raw, INVALID_RANGE_ERROR)?;
-        Ok(Self)
+impl Default for AllVersion {
+    fn default() -> Self {
+        AllVersion
     }
 }
 
-impl TryFrom<RawWildcardRange> for AllVersionRange {
-    type Error = VersError;
-
-    fn try_from(raw: RawWildcardRange) -> Result<Self, Self::Error> {
-        WildcardRange::validate_raw(raw, ALL_SCHEME, INVALID_RANGE_ERROR)?;
-        Ok(Self)
+impl Display for AllVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "")
     }
 }
 
-impl Serialize for AllVersionRange {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        WildcardRange::serialize(serializer, ALL_SCHEME)
+impl NativeVersionConverter for AllVersion {
+    fn scheme_name() -> &'static str {
+        VersioningScheme::All.as_ref()
+    }
+
+    fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
+        if raw
+            .bytes()
+            .any(|b| b != b' ' && crate::util::ascii_whitespace::is_ascii_vers_whitespace(b))
+        {
+            return Err(VersError::InvalidCharacters(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string(),
+            ));
+        }
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return Err(VersError::EmptyConstraints);
+        }
+        if raw != "*" {
+            Err(VersError::InvalidVersionFormat(
+                Self::scheme_name().to_string(),
+                raw.to_string(),
+                INVALID_RANGE_ERROR.to_string(),
+            ))
+        } else {
+            Ok(Vec::from([VersionConstraint {
+                comparator: crate::Comparator::Any,
+                version: AllVersion,
+            }]))
+        }
     }
 }
 
-impl FromStr for AllVersionRange {
+impl FromStr for AllVersion {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        WildcardRange::parse_vers(s, ALL_SCHEME, INVALID_RANGE_ERROR).map(|()| Self)
-    }
-}
-
-impl VersionRange<String> for AllVersionRange {
-    fn versioning_scheme(&self) -> &str {
-        ALL_SCHEME
-    }
-
-    fn contains(&self, _: String) -> Result<bool, VersError> {
-        Ok(true)
-    }
-
-    fn constraints(&self) -> &Vec<VersionConstraint<String>> {
-        WildcardRange::constraints()
-    }
-}
-
-impl Display for AllVersionRange {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "vers:all/*")
+        if s == "*" {
+            Ok(Self)
+        } else {
+            Err(VersError::InvalidVersionFormat(
+                Self::scheme_name().to_string(),
+                s.into(),
+                INVALID_RANGE_ERROR.into(),
+            ))
+        }
     }
 }
 
@@ -81,38 +82,18 @@ mod tests {
 
     #[test]
     fn only_wildcard_is_valid() {
-        assert!(AllVersionRange::parse("*").is_ok());
+        assert!(AllVersion::from_str("*").is_ok());
         assert!(matches!(
-            AllVersionRange::parse("1.0.0"),
-            Err(VersError::InvalidRange(_))
+            AllVersion::from_str("1.0.0"),
+            Err(VersError::InvalidVersionFormat(_, _, _))
         ));
-    }
-
-    #[test]
-    fn parses_canonical_vers_string() {
-        let range: AllVersionRange = "vers:all/*".parse().unwrap();
-        assert_eq!(range.to_string(), "vers:all/*");
     }
 
     #[test]
     fn serde_rejects_noncanonical_range() {
         assert!(
-            serde_json::from_str::<AllVersionRange>(
-                r#"{"versioning_scheme":"all","constraints":[]}"#
-            )
-            .is_err()
-        );
-    }
-
-    #[cfg(feature = "wasm")]
-    #[test]
-    fn wasm_type_matches_serialized_shape() {
-        use tsify::Tsify;
-
-        assert!(
-            AllVersionRange::DECL.ends_with(
-                "export type AllVersionRange = { versioning_scheme: 'all'; constraints: VersionConstraint<string>[] };"
-            )
+            serde_json::from_str::<AllVersion>(r#"{"versioning_scheme":"all","constraints":[]}"#)
+                .is_err()
         );
     }
 }

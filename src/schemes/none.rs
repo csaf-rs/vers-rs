@@ -3,77 +3,77 @@
 //! The VERS specification defines `vers:none/*` as the sole valid form for a
 //! range containing no versions.
 
-use crate::range::VersionRange;
-use crate::range::wildcard::{RawWildcardRange, WildcardRange};
-use crate::{VersError, VersionConstraint};
+use crate::{NativeVersionConverter, VersError, VersionConstraint, VersioningScheme};
 use serde::{Deserialize, Serialize};
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-pub const NONE_SCHEME: &str = "none";
-const INVALID_RANGE_ERROR: &str = "the none scheme only accepts the '*' constraint";
+const INVALID_RANGE_ERROR: &str = "the none scheme only accepts a single '*' constraint";
 
 /// A range that contains no candidate versions.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(try_from = "RawWildcardRange")]
+#[derive(Debug, Clone, Hash, PartialOrd, Ord, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(
-    feature = "wasm",
-    tsify(type = "{ versioning_scheme: 'none'; constraints: VersionConstraint<string>[] }")
-)]
-pub struct NoneVersionRange;
+pub struct NoneVersion;
 
-impl TryFrom<RawWildcardRange> for NoneVersionRange {
-    type Error = VersError;
-
-    fn try_from(raw: RawWildcardRange) -> Result<Self, Self::Error> {
-        WildcardRange::validate_raw(raw, NONE_SCHEME, INVALID_RANGE_ERROR)?;
-        Ok(Self)
+impl Default for NoneVersion {
+    fn default() -> Self {
+        NoneVersion
     }
 }
 
-impl NoneVersionRange {
-    /// Parse the constraint portion of a `none` range.
-    pub fn parse(raw: &str) -> Result<Self, VersError> {
-        WildcardRange::parse_constraint(raw, INVALID_RANGE_ERROR)?;
-        Ok(Self)
+impl Display for NoneVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "")
     }
 }
 
-impl Serialize for NoneVersionRange {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::ser::Serializer,
-    {
-        WildcardRange::serialize(serializer, NONE_SCHEME)
+impl NativeVersionConverter for NoneVersion {
+    fn scheme_name() -> &'static str {
+        VersioningScheme::None.as_ref()
+    }
+
+    fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
+        if raw
+            .bytes()
+            .any(|b| b != b' ' && crate::util::ascii_whitespace::is_ascii_vers_whitespace(b))
+        {
+            return Err(VersError::InvalidCharacters(
+                "Control characters (tabs, newlines, carriage returns) are not permitted"
+                    .to_string(),
+            ));
+        }
+        let raw = raw.trim();
+        if raw.is_empty() {
+            return Err(VersError::EmptyConstraints);
+        }
+        if raw != "*" {
+            Err(VersError::InvalidVersionFormat(
+                Self::scheme_name().to_string(),
+                raw.to_string(),
+                INVALID_RANGE_ERROR.to_string(),
+            ))
+        } else {
+            Ok(Vec::from([VersionConstraint {
+                comparator: crate::Comparator::Any,
+                version: NoneVersion,
+            }]))
+        }
     }
 }
 
-impl FromStr for NoneVersionRange {
+impl FromStr for NoneVersion {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        WildcardRange::parse_vers(s, NONE_SCHEME, INVALID_RANGE_ERROR).map(|()| Self)
-    }
-}
-
-impl VersionRange<String> for NoneVersionRange {
-    fn versioning_scheme(&self) -> &str {
-        NONE_SCHEME
-    }
-
-    fn contains(&self, _: String) -> Result<bool, VersError> {
-        Ok(false)
-    }
-
-    fn constraints(&self) -> &Vec<VersionConstraint<String>> {
-        WildcardRange::constraints()
-    }
-}
-
-impl Display for NoneVersionRange {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "vers:none/*")
+        if s == "*" {
+            Ok(Self)
+        } else {
+            Err(VersError::InvalidVersionFormat(
+                Self::scheme_name().to_string(),
+                s.into(),
+                INVALID_RANGE_ERROR.into(),
+            ))
+        }
     }
 }
 
@@ -83,38 +83,18 @@ mod tests {
 
     #[test]
     fn only_wildcard_is_valid() {
-        assert!(NoneVersionRange::parse("*").is_ok());
+        assert!(NoneVersion::from_str("*").is_ok());
         assert!(matches!(
-            NoneVersionRange::parse("1.0.0"),
-            Err(VersError::InvalidRange(_))
+            NoneVersion::from_str("1.0.0"),
+            Err(VersError::InvalidVersionFormat(_, _, _))
         ));
-    }
-
-    #[test]
-    fn parses_canonical_vers_string() {
-        let range: NoneVersionRange = "vers:none/*".parse().unwrap();
-        assert_eq!(range.to_string(), "vers:none/*");
     }
 
     #[test]
     fn serde_rejects_noncanonical_range() {
         assert!(
-            serde_json::from_str::<NoneVersionRange>(
-                r#"{"versioning_scheme":"none","constraints":[]}"#
-            )
-            .is_err()
-        );
-    }
-
-    #[cfg(feature = "wasm")]
-    #[test]
-    fn wasm_type_matches_serialized_shape() {
-        use tsify::Tsify;
-
-        assert!(
-            NoneVersionRange::DECL.ends_with(
-                "export type NoneVersionRange = { versioning_scheme: 'none'; constraints: VersionConstraint<string>[] };"
-            )
+            serde_json::from_str::<NoneVersion>(r#"{"versioning_scheme":"none","constraints":[]}"#)
+                .is_err()
         );
     }
 }

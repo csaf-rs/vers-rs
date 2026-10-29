@@ -74,4 +74,3 @@ pub trait VersionRange<V: VersionType> {
 
 pub mod dynamic;
 pub mod vers;
-pub(crate) mod wildcard;

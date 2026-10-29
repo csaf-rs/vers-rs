@@ -14,27 +14,35 @@ use {js_sys::Error as JsError, tsify::Tsify, wasm_bindgen::JsValue};
 #[derive(thiserror::Error, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "wasm", derive(Tsify))]
 pub enum VersError {
+    /// Invalid characters were found somewhere in the string
     #[error("Invalid characters in version range specifier: {0}")]
     InvalidCharacters(String),
 
+    /// vers is the only allowed scheme
     #[error("Invalid URI scheme, expected 'vers'")]
     InvalidScheme,
 
+    /// The string has no versioning scheme.
     #[error("Missing versioning scheme")]
     MissingVersioningScheme,
 
+    /// The string has no constraints.
     #[error("Empty version constraints")]
     EmptyConstraints,
 
+    /// There are invalid constraints.
     #[error("Invalid version constraint: {0}")]
     InvalidConstraint(String),
 
+    /// Duplicate versions were found.
     #[error("Duplicate versions found: {0}")]
     DuplicateVersions(String),
 
+    /// ToDo: So such range exists
     #[error("Invalid version range: {0}")]
     InvalidRange(String),
 
+    /// Different versioning schemes cannot be compared with each other.
     #[error("Incompatible versioning schemes: {0} and {1}")]
     IncompatibleVersioningSchemes(String, String),
 
@@ -46,21 +54,27 @@ pub enum VersError {
     #[error("Unsupported versioning scheme: {0}")]
     UnsupportedVersioningScheme(String),
 
+    /// A version is missing in a constraint
     #[error("Missing version in constraint")]
     MissingVersionInConstraint,
 
+    /// The given string cannot be parsed for this version scheme.
     #[error("Invalid version format for scheme {0}: {1}, error was: {2}")]
     InvalidVersionFormat(String, String, String),
 
+    /// Versions are not ordered canonically.
     #[error("Versions must be canonically ordered, but {0} is not less than {1}")]
     UnorderedVersions(String, String),
 
+    /// An unencoded operator was found in the string.
     #[error("Version contains an unencoded operator: {0}")]
     UnencodedOperator(String),
 
+    /// Multiple asterisks were found in the string.
     #[error("Multiple asterisks in version range specifier: {0}")]
     MultipleAsterisks(String),
 
+    /// An unallowed operator sequence was found in the string.
     #[error("Unallowed consecutive operator sequence found in version range specifier: {0}")]
     ConsecutiveOperators(String),
 
