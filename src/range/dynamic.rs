@@ -74,7 +74,7 @@ enum DynamicVersionRangeInner {
 #[cfg_attr(
     feature = "wasm",
     tsify(
-        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion> | AllVersionRange | NoneVersionRange"
+        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion> | VersVersionRange<AllVersion> | VersVersionRange<NoneVersion>"
     )
 )]
 pub struct DynamicVersionRange {
@@ -264,12 +264,8 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::IntDot(range) => {
                 range.contains(version_str.parse::<IntDotVersion>()?)
             }
-            DynamicVersionRangeInner::All(range) => {
-                range.contains(version_str.parse::<AllVersion>()?)
-            }
-            DynamicVersionRangeInner::None(range) => {
-                range.contains(version_str.parse::<NoneVersion>()?)
-            }
+            DynamicVersionRangeInner::All(_) => Ok(true),
+            DynamicVersionRangeInner::None(_) => Ok(false),
         }
     }
 
@@ -849,14 +845,38 @@ mod tests {
     #[case("vers:cargo/>=1.0.0|<2.0.0")]
     #[case("vers:semver/>=1.0.0|<2.0.0")]
     #[case("vers:intdot/>=1.0.0|<2.0.0")]
-    #[case("vers:all/*")]
-    #[case("vers:none/*")]
     fn test_contains_invalid_version(#[case] input: &str) {
         let range: DynamicVersionRange = input.parse().unwrap();
         assert!(matches!(
             range.contains("not a version".to_string()).unwrap_err(),
             VersError::InvalidVersionFormat(_, _, _)
         ));
+    }
+
+    #[rstest]
+    #[case("vers:intdot/>*")]
+    #[case("vers:semver/<*")]
+    #[case("vers:cargo/!=*")]
+    #[case("vers:deb/>=*")]
+    #[case("vers:all/<=*")]
+    #[case("vers:none/!=*")]
+    fn testme(#[case] input: &str) {
+        let range: Result<DynamicVersionRange, VersError> = input.parse();
+        assert_matches!(range, Err(VersError::InvalidConstraint(_)))
+    }
+
+    #[rstest]
+    #[case::integer("1")]
+    #[case::semver("1.0.0")]
+    #[case::intdot("1.0.0.0")]
+    #[case::deb("1.0-0")]
+    #[case::not_a_version("not a version")]
+    #[case::asterisk("*")]
+    fn all_contains_every_version_none_no_version(#[case] input: &str) {
+        let range: DynamicVersionRange = "vers:all/*".parse().unwrap();
+        assert!(range.contains(input.to_string()).unwrap());
+        let range: DynamicVersionRange = "vers:none/*".parse().unwrap();
+        assert!(!range.contains(input.to_string()).unwrap());
     }
 
     #[rstest]

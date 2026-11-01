@@ -38,7 +38,7 @@ pub enum VersError {
     #[error("Duplicate versions found: {0}")]
     DuplicateVersions(String),
 
-    /// ToDo: So such range exists
+    /// Represents all errors not specified otherwise
     #[error("Invalid version range: {0}")]
     InvalidRange(String),
 
