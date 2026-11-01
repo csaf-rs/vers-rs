@@ -318,8 +318,13 @@ impl<V: VersionType> VersionConstraint<V> {
             )));
         }
 
-        if version.is_empty() && comparator != Comparator::Any {
-            return Err(VersError::MissingVersionInConstraint);
+        if comparator != Comparator::Any {
+            if version.is_empty() {
+                return Err(VersError::MissingVersionInConstraint);
+            }
+            if version == "*" {
+                return Err(VersError::InvalidConstraint(constraint_str.to_string()));
+            }
         }
 
         if RESERVED_OPERATOR_TOKENS
