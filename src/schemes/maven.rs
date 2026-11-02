@@ -268,7 +268,9 @@ fn parse_single_maven_interval(
         && !lower.is_empty()
     {
         let inclusive = raw.starts_with('[');
-        let comp = if inclusive {
+        let comp = if parts.len() == 1 && inclusive && raw.ends_with(']') {
+            Comparator::Equal
+        } else if inclusive {
             Comparator::GreaterThanOrEqual
         } else {
             Comparator::GreaterThan
