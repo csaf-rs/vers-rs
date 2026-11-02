@@ -957,6 +957,33 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[test]
+    fn test_deserialize_all_none() {
+        let json_data = r#"{
+            "versioning_scheme": "all",
+            "constraints": [
+                {
+                    "comparator": "Any",
+                    "version": "*"
+                }
+            ]
+        }"#;
+        let range: DynamicVersionRange = serde_json::from_str(json_data).unwrap();
+        assert_eq!(range.to_string(), r#"vers:all/*"#);
+
+        let json_data = r#"{
+            "versioning_scheme": "none",
+            "constraints": [
+                {
+                    "comparator": "Any",
+                    "version": "*"
+                }
+            ]
+        }"#;
+        let range: DynamicVersionRange = serde_json::from_str(json_data).unwrap();
+        assert_eq!(range.to_string(), r#"vers:none/*"#);
+    }
+
     #[cfg(feature = "wasm")]
     #[test]
     fn test_cached_constraints_excluded_from_ts_decl() {
@@ -972,7 +999,7 @@ mod tests {
 
         assert!(
             DynamicVersionRange::DECL.contains(
-                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion> | AllVersionRange | NoneVersionRange;"
+                "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion> | VersVersionRange<AllVersion> | VersVersionRange<NoneVersion>;"
             )
         );
     }

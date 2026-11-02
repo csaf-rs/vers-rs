@@ -9,15 +9,43 @@ use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
 const INVALID_RANGE_ERROR: &str = "the none scheme only accepts a single '*' constraint";
+const WILDCARD: &str = "*";
 
 /// A range that contains no candidate versions.
-#[derive(Debug, Clone, Hash, PartialOrd, Ord, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Hash, PartialOrd, Ord, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+// The wire form is the wildcard string, so override tsify's unit-struct
+// rendering (`null`) with a string literal type.
+#[cfg_attr(feature = "wasm", tsify(type = r#""*""#))]
 pub struct NoneVersion;
 
 impl Default for NoneVersion {
     fn default() -> Self {
         NoneVersion
+    }
+}
+
+/// Serializes as the canonical native form: the wildcard string `"*"`, so a
+/// `VersVersionRange<NoneVersion>` keeps a plain string `version` field like
+/// every other scheme.
+impl Serialize for NoneVersion {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        serializer.serialize_str(WILDCARD)
+    }
+}
+
+/// Accepts only the canonical wildcard `"*"`; any other string (or `null`) is
+/// a non-canonical spelling and is rejected.
+impl<'de> Deserialize<'de> for NoneVersion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::de::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::from_str(&raw).map_err(serde::de::Error::custom)
     }
 }
 
@@ -46,7 +74,7 @@ impl NativeVersionConverter for NoneVersion {
         if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
-        if raw != "*" {
+        if raw != WILDCARD {
             Err(VersError::InvalidVersionFormat(
                 Self::scheme_name().to_string(),
                 raw.to_string(),
@@ -65,7 +93,7 @@ impl FromStr for NoneVersion {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == "*" {
+        if s == WILDCARD {
             Ok(Self)
         } else {
             Err(VersError::InvalidVersionFormat(
@@ -96,5 +124,27 @@ mod tests {
             serde_json::from_str::<NoneVersion>(r#"{"versioning_scheme":"none","constraints":[]}"#)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn serde_accepts_only_canonical_wildcard() {
+        let version: NoneVersion = serde_json::from_str(r#""*""#).unwrap();
+        assert_eq!(serde_json::to_string(&version).unwrap(), r#""*""#);
+
+        assert!(serde_json::from_str::<NoneVersion>(r#""1.0.0""#).is_err());
+        assert!(serde_json::from_str::<NoneVersion>("null").is_err());
+    }
+}
+
+#[cfg(all(test, feature = "wasm"))]
+mod tsify_decl_check {
+    use super::NoneVersion;
+    use tsify::Tsify;
+
+    /// The wire form is the wildcard string, not the `null` tsify would emit
+    /// for a unit struct without an override.
+    #[test]
+    fn none_version_ts_decl_is_wildcard_string() {
+        assert!(NoneVersion::DECL.ends_with(r#"export type NoneVersion = "*";"#));
     }
 }
