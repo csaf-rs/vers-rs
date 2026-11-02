@@ -25,6 +25,10 @@ impl NativeVersionConverter for DebVersion {
         VersioningScheme::Deb.as_ref()
     }
 
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        Some(&[VersioningScheme::Deb])
+    }
+
     /// Debian version relations (`<<`, `<=`, `=`, `>=`, `>>`) instead of the
     /// standard vers operators; notably no bare `<`/`>`/`!=`. Longer tokens
     /// are listed before their single-character prefixes (`<<` before `<=`,

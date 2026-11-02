@@ -60,6 +60,10 @@ impl NativeVersionConverter for NoneVersion {
         VersioningScheme::None.as_ref()
     }
 
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        Some(&[VersioningScheme::None])
+    }
+
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw
             .bytes()
@@ -135,6 +139,19 @@ mod tests {
 
         assert!(serde_json::from_str::<NoneVersion>(r#""1.0.0""#).is_err());
         assert!(serde_json::from_str::<NoneVersion>("null").is_err());
+    }
+
+    // The typed map form must pair the version type with its own scheme:
+    // `NoneVersion` only implements the "none" scheme.
+    #[test]
+    fn typed_serde_rejects_scheme_type_mismatch() {
+        let result = serde_json::from_str::<crate::VersVersionRange<NoneVersion>>(
+            r#"{"versioning_scheme":"deb","constraints":[{"comparator":"Any","version":"*"}]}"#,
+        );
+        assert_matches!(
+            result,
+            Err(err) if err.to_string().contains("expected one of: none")
+        );
     }
 
     // `vers:none/*` is the only canonical form: the payload-less wildcard
