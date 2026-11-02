@@ -343,6 +343,7 @@ impl FromStr for DynamicVersionRange {
             VersioningScheme::Deb => DynamicVersionRangeInner::Deb(s.parse()?),
             VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(s.parse()?),
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(s.parse()?),
+            VersioningScheme::Maven => DynamicVersionRangeInner::Maven(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
         };
 
@@ -406,6 +407,9 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            VersioningScheme::Maven => DynamicVersionRangeInner::Maven(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             _ => {
