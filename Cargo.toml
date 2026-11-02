@@ -20,6 +20,7 @@ wasm = ["dep:wasm-bindgen", "dep:js-sys", "dep:tsify", "dep:serde-wasm-bindgen"]
 
 [dependencies]
 thiserror = "2"
+maven-version-range = { version = "0.1.1", features = ["semver"] }
 pct-str = "3"
 semver = { version = "1", features = ["serde"] }
 derive_more = { version = "2", features = ["from_str", "display"] }
@@ -31,6 +32,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = { version = "0.6", optional = true }
 serde_json = "1.0.151"
 debversion = { version = "0.5.4", features = ["serde"] }
+version-compare = "0.2.1"
 
 [dev-dependencies]
 rstest = "0.28.0"
