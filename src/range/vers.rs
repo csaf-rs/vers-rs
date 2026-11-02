@@ -27,7 +27,7 @@ use crate::VersionConstraint;
 use crate::constraint::VersionType;
 use crate::range::VersionRange;
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
-use crate::{Comparator, VersError};
+use crate::{Comparator, VersError, VersioningScheme};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -238,6 +238,21 @@ impl<V: VersionType> VersVersionRange<V> {
         // Check if constraints are empty
         if self.constraints.is_empty() {
             return Err(VersError::EmptyConstraints);
+        }
+
+        // The all and none schemes are canonical only as the single wildcard
+        // constraint (`Any` over their payload-less version type); any other
+        // comparator has no canonical vers form. Their serde paths validate
+        // the version string itself, so only the comparator can drift here.
+        if matches!(
+            VersioningScheme::from_str(&self.versioning_scheme),
+            Ok(VersioningScheme::All | VersioningScheme::None)
+        ) && (self.constraints.len() != 1 || self.constraints[0].comparator != Any)
+        {
+            return Err(VersError::InvalidRange(format!(
+                "the {} scheme only accepts a single '*' constraint",
+                self.versioning_scheme
+            )));
         }
 
         // Check for star constraint

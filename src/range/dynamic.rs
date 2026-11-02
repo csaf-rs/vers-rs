@@ -984,6 +984,34 @@ mod tests {
         assert_eq!(range.to_string(), r#"vers:none/*"#);
     }
 
+    // A constraint map without a scheme name is not a valid serialized vers
+    // range (the user-facing request shape).
+    #[test]
+    fn deserialize_rejects_missing_versioning_scheme() {
+        let result = serde_json::from_str::<DynamicVersionRange>(
+            r#"{"constraints" : [ {"comparator": "LessThan", "version": "*"}]}"#,
+        );
+        assert_matches!(
+            result,
+            Err(err) if err.to_string().contains("versioning_scheme")
+        );
+    }
+
+    #[rstest]
+    #[case::all(
+        r#"{"versioning_scheme":"all","constraints":[{"comparator":"LessThan","version":"*"}]}"#
+    )]
+    #[case::none(
+        r#"{"versioning_scheme":"none","constraints":[{"comparator":"GreaterThan","version":"*"}]}"#
+    )]
+    fn deserialize_rejects_noncanonical_all_and_none_ranges(#[case] json: &str) {
+        // The precise error contract is pinned at the typed level
+        // (`schemes::all` / `schemes::none`); errors are re-wrapped as
+        // `serde_json::Error` at this level.
+        let result = serde_json::from_str::<DynamicVersionRange>(json);
+        assert_matches!(result, Err(_));
+    }
+
     #[cfg(feature = "wasm")]
     #[test]
     fn test_cached_constraints_excluded_from_ts_decl() {

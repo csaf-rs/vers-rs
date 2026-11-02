@@ -107,6 +107,8 @@ impl FromStr for NoneVersion {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
     use super::*;
 
     #[test]
@@ -133,6 +135,19 @@ mod tests {
 
         assert!(serde_json::from_str::<NoneVersion>(r#""1.0.0""#).is_err());
         assert!(serde_json::from_str::<NoneVersion>("null").is_err());
+    }
+
+    // `vers:none/*` is the only canonical form: the payload-less wildcard
+    // version rejects any comparator other than `Any`.
+    #[test]
+    fn typed_serde_rejects_non_wildcard_comparator() {
+        let result = serde_json::from_str::<crate::VersVersionRange<NoneVersion>>(
+            r#"{"versioning_scheme":"none","constraints":[{"comparator":"LessThan","version":"*"}]}"#,
+        );
+        assert_matches!(
+            result,
+            Err(err) if err.to_string().contains("the none scheme only accepts a single '*' constraint")
+        );
     }
 }
 

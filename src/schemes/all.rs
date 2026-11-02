@@ -106,6 +106,8 @@ impl FromStr for AllVersion {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
     use super::*;
 
     #[test]
@@ -132,6 +134,19 @@ mod tests {
 
         assert!(serde_json::from_str::<AllVersion>(r#""1.0.0""#).is_err());
         assert!(serde_json::from_str::<AllVersion>("null").is_err());
+    }
+
+    // `vers:all/*` is the only canonical form: the payload-less wildcard
+    // version rejects any comparator other than `Any`.
+    #[test]
+    fn typed_serde_rejects_non_wildcard_comparator() {
+        let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
+            r#"{"versioning_scheme":"all","constraints":[{"comparator":"LessThan","version":"*"}]}"#,
+        );
+        assert_matches!(
+            result,
+            Err(err) if err.to_string().contains("the all scheme only accepts a single '*' constraint")
+        );
     }
 }
 
