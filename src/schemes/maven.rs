@@ -168,12 +168,10 @@ impl Ord for MavenVersion {
             return Ordering::Equal;
         }
 
-        // Use version-compare for robust numeric and qualifier semantic sorting (1.9 vs 1.10, SNAPSHOT < release)
-        let v1 = version_compare::Version::from(&self.raw);
-        let v2 = version_compare::Version::from(&other.raw);
-
-        match (v1, v2) {
-            (Some(a), Some(b)) => a.cmp(&b),
+        match version_compare::compare(&self.raw, &other.raw) {
+            Ok(version_compare::Cmp::Lt) => Ordering::Less,
+            Ok(version_compare::Cmp::Eq) => Ordering::Equal,
+            Ok(version_compare::Cmp::Gt) => Ordering::Greater,
             _ => self.raw.cmp(&other.raw),
         }
     }
