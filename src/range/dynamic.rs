@@ -549,6 +549,14 @@ mod tests {
     }
 
     #[rstest]
+    #[case("vers:all/<%2A")]
+    #[case("vers:none/!=%2A")]
+    fn encoded_asterisk_after_operator_should_fail(#[case] input: &str) {
+        let range: Result<DynamicVersionRange, VersError> = input.parse();
+        assert_matches!(range, Err(VersError::InvalidConstraint(_)));
+    }
+
+    #[rstest]
     #[case::asterisk_at_first_position("vers:semver/*|1.2.3")]
     #[case::asterisk_at_last_position("vers:semver/1.2.3|*")]
     fn asterisk_with_other_constraints_is_not_allowed(#[case] input: &str) {
