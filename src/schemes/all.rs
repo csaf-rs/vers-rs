@@ -117,10 +117,10 @@ mod tests {
     #[test]
     fn only_wildcard_is_valid() {
         assert!(AllVersion::from_str("*").is_ok());
-        assert!(matches!(
+        assert_matches!(
             AllVersion::from_str("1.0.0"),
             Err(VersError::InvalidVersionFormat(_, _, _))
-        ));
+        );
     }
 
     #[test]
