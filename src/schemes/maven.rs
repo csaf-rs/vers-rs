@@ -134,6 +134,19 @@ impl FromStr for MavenVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
+        if s.is_empty() {
+            return Err(VersError::InvalidConstraint(
+                "Empty version string".to_string(),
+            ));
+        }
+
+        // Validate the version string during parsing using maven-version-range
+        // by wrapping it into an exact range format `[version]`
+        let exact_range_str = format!("[{}]", s);
+        MavenVersionRange::from_str(&exact_range_str).map_err(|e| {
+            VersError::InvalidConstraint(format!("Invalid Maven version format '{}': {}", s, e))
+        })?;
+
         Ok(MavenVersion { raw: s.to_string() })
     }
 }
