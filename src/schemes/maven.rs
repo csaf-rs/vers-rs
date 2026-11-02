@@ -97,7 +97,9 @@ impl NativeVersionConverter for MavenVersion {
         if raw.is_empty() {
             return Err(VersError::InvalidConstraint("Empty constraint".to_string()));
         }
-
+        if Self::native_wildcard() == Some(raw) {
+            return Ok(VersionConstraint::new(Comparator::Any, Self::default()));
+        }
         let (comparator, version_str) = if let Some(stripped) = raw.strip_prefix(">=") {
             (Comparator::GreaterThanOrEqual, stripped)
         } else if let Some(stripped) = raw.strip_prefix("<=") {
@@ -142,15 +144,15 @@ impl Display for MavenVersion {
     }
 }
 
-impl PartialEq for MavenVersion {
-    fn eq(&self, other: &Self) -> bool {
-        self.raw == other.raw
-    }
-}
-
 impl Hash for MavenVersion {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.raw.hash(state);
+    }
+}
+
+impl PartialEq for MavenVersion {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
     }
 }
 
@@ -162,12 +164,16 @@ impl PartialOrd for MavenVersion {
 
 impl Ord for MavenVersion {
     fn cmp(&self, other: &Self) -> Ordering {
-        // This is where the official validation via `MavenVersionRange` comes into play.
-        let range_self = MavenVersionRange::from_str(&self.raw);
-        let range_other = MavenVersionRange::from_str(&other.raw);
+        if self.raw == other.raw {
+            return Ordering::Equal;
+        }
 
-        match (range_self, range_other) {
-            (Ok(a), Ok(b)) => format!("{:?}", a).cmp(&format!("{:?}", b)),
+        // Use version-compare for robust numeric and qualifier semantic sorting (1.9 vs 1.10, SNAPSHOT < release)
+        let v1 = version_compare::Version::from(&self.raw);
+        let v2 = version_compare::Version::from(&other.raw);
+
+        match (v1, v2) {
+            (Some(a), Some(b)) => a.cmp(&b),
             _ => self.raw.cmp(&other.raw),
         }
     }
@@ -298,10 +304,10 @@ fn parse_single_maven_interval(
 
 #[cfg(test)]
 mod tests {
-    use super::MavenVersion;
-    use crate::Comparator;
+    use super::{MavenVersion, parse_maven_unions, parse_single_maven_interval};
     use crate::range::VersionRange;
     use crate::range::dynamic::DynamicVersionRange;
+    use crate::{Comparator, NativeVersionConverter};
     use std::str::FromStr;
 
     #[test]
@@ -318,5 +324,64 @@ mod tests {
         let v1 = MavenVersion::from_str("1.0.0").unwrap();
         let v2 = MavenVersion::from_str("1.1.0").unwrap();
         assert!(v1 < v2);
+    }
+
+    #[test]
+    fn test_maven_version_ordering_numeric() {
+        let v_nine = MavenVersion::from_str("1.9.0").unwrap();
+        let v_ten = MavenVersion::from_str("1.10.0").unwrap();
+
+        // Semantischer Vergleich muss sicherstellen, dass 1.10 größer als 1.9 ist (kein reiner String-Vergleich)
+        assert!(v_nine < v_ten);
+    }
+
+    #[test]
+    fn test_maven_version_ordering_qualifiers() {
+        let snapshot = MavenVersion::from_str("1.0.0-SNAPSHOT").unwrap();
+        let release = MavenVersion::from_str("1.0.0").unwrap();
+
+        assert!(snapshot < release);
+    }
+
+    #[test]
+    fn test_maven_union_ranges_parsing() {
+        let constraints = parse_maven_unions("(,1.0.0],[1.2.0,)").unwrap();
+        // Should produce 4 constraints: < 1.0.0 (or <=), <= 1.0.0, >= 1.2.0, etc.
+        assert!(!constraints.is_empty());
+    }
+
+    #[test]
+    fn test_maven_single_interval_bounds() {
+        let constraints = parse_single_maven_interval("[1.0.0,2.0.0)").unwrap();
+        assert_eq!(constraints.len(), 2);
+
+        assert_eq!(constraints[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(constraints[0].version.to_string(), "1.0.0");
+
+        assert_eq!(constraints[1].comparator, Comparator::LessThan);
+        assert_eq!(constraints[1].version.to_string(), "2.0.0");
+    }
+
+    #[test]
+    fn test_maven_single_version_shorthand() {
+        let constraints = parse_single_maven_interval("[1.5.0]").unwrap();
+        assert_eq!(constraints.len(), 1);
+        assert_eq!(constraints[0].comparator, Comparator::Equal);
+        assert_eq!(constraints[0].version.to_string(), "1.5.0");
+    }
+
+    #[test]
+    fn test_maven_control_characters_error() {
+        let res = MavenVersion::from_native("1.0.0\n");
+        assert!(res.is_err());
+
+        let res_tab = MavenVersion::from_native("1.0.0\t");
+        assert!(res_tab.is_err());
+    }
+
+    #[test]
+    fn test_maven_empty_constraints_error() {
+        let res = MavenVersion::from_native("   ");
+        assert!(res.is_err());
     }
 }
