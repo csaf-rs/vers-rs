@@ -9,7 +9,7 @@
 
 use crate::VersVersionRange;
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
-use crate::{Comparator, VersError};
+use crate::{Comparator, VersError, VersioningScheme};
 use pct_str::PctStr;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -54,6 +54,20 @@ where
 {
     /// The vers scheme identifier for this version type (e.g. `"deb"`, `"semver"`).
     fn scheme_name() -> &'static str;
+
+    /// The VERS versioning schemes whose constraint syntax this version type
+    /// implements.
+    ///
+    /// Typed [`VersVersionRange`] construction validates that a range's
+    /// `versioning_scheme` names one of these schemes, so the scheme string
+    /// cannot drift away from the version type it is paired with (e.g. an
+    /// [`crate::schemes::all::AllVersion`]-typed range labelled `"npm"`).
+    ///
+    /// Defaults to `None`, which opts the version type out of that check.
+    /// Override and list the implemented schemes to opt in.
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        None
+    }
 
     /// The character used to separate multiple native constraints within a
     /// single native range string.
@@ -318,10 +332,6 @@ impl<V: VersionType> VersionConstraint<V> {
             )));
         }
 
-        if version.is_empty() && comparator != Comparator::Any {
-            return Err(VersError::MissingVersionInConstraint);
-        }
-
         if RESERVED_OPERATOR_TOKENS
             .iter()
             .any(|op| version.contains(op))
@@ -352,6 +362,15 @@ impl<V: VersionType> VersionConstraint<V> {
         } else {
             version.to_string()
         };
+
+        if comparator != Comparator::Any {
+            if version_str.is_empty() {
+                return Err(VersError::MissingVersionInConstraint);
+            }
+            if version_str == "*" {
+                return Err(VersError::InvalidConstraint(constraint_str.to_string()));
+            }
+        }
 
         let parsed_version = version_str.parse::<V>().map_err(|e| e.into())?;
 

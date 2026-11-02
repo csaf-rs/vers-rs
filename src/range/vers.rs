@@ -24,10 +24,10 @@
 use crate::Comparator::*;
 use crate::DynamicVersionRange;
 use crate::VersionConstraint;
-use crate::constraint::VersionType;
+use crate::constraint::{NativeVersionConverter, VersionType};
 use crate::range::VersionRange;
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
-use crate::{Comparator, VersError};
+use crate::{Comparator, VersError, VersioningScheme};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::collections::VecDeque;
@@ -46,8 +46,18 @@ use std::str::FromStr;
 /// - `vers:npm/1.2.3` (a single version)
 /// - `vers:npm/>=1.0.0|<2.0.0` (a range of versions)
 /// - `vers:pypi/*` (any version)
+///
+/// When parsed from a string or deserialized from the JSON map form, the
+/// `versioning_scheme` must name one of the schemes the version type `V`
+/// implements (e.g. `SemVer` backs `semver` and `npm`); see
+/// [`NativeVersionConverter::versioning_schemes`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "RawVersVersionRange<V>")]
+#[serde(
+    try_from = "RawVersVersionRange<V>",
+    bound(
+        deserialize = "V: serde::Deserialize<'de> + NativeVersionConverter, V::Err: Into<VersError>"
+    )
+)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct VersVersionRange<V: VersionType> {
     /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
@@ -63,7 +73,11 @@ struct RawVersVersionRange<V: VersionType> {
     constraints: Vec<VersionConstraint<V>>,
 }
 
-impl<V: VersionType> TryFrom<RawVersVersionRange<V>> for VersVersionRange<V> {
+impl<V> TryFrom<RawVersVersionRange<V>> for VersVersionRange<V>
+where
+    V: VersionType + NativeVersionConverter,
+    V::Err: Into<VersError>,
+{
     type Error = VersError;
 
     fn try_from(raw: RawVersVersionRange<V>) -> Result<Self, Self::Error> {
@@ -94,6 +108,7 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
     ///
     /// The algorithm:
     /// 1. If the constraint list contains only "*", then the version is in the range
+    ///    (except for the "none" scheme, where nothing is contained)
     /// 2. Check for exact matches with equality comparators
     /// 3. Check for exact matches with inequality comparators
     /// 4. Check range constraints (>, >=, <, <=) to see if the version falls within any interval
@@ -123,9 +138,11 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
             return Ok(false);
         }
 
-        // If the constraint list contains only "*", then the version is in the range
+        // If the constraint list contains only "*", the versioning scheme decides
+        // how it matches: `none` designates the empty version range, so its `*`
+        // matches no version, while every other scheme's `*` matches all versions.
         if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
-            return Ok(true);
+            return Ok(self.versioning_scheme.as_str() != VersioningScheme::None.as_ref());
         }
 
         // Check for exact matches with equality and inequality comparators
@@ -226,18 +243,74 @@ impl<V: VersionType> VersVersionRange<V> {
         }
     }
 
+    /// Reject a versioning scheme that does not belong to the range's version
+    /// type: the typed JSON map form and vers strings carry the scheme as a
+    /// plain string, so the pair can drift apart (e.g. an `AllVersion`-typed
+    /// range labelled `"npm"`). Version types that do not declare their
+    /// schemes via [`NativeVersionConverter::versioning_schemes`] are not
+    /// checked.
+    fn validate_versioning_scheme(scheme: &str) -> Result<(), VersError>
+    where
+        V: NativeVersionConverter,
+        V::Err: Into<VersError>,
+    {
+        let Some(schemes) = V::versioning_schemes() else {
+            return Ok(());
+        };
+
+        let scheme_kind = VersioningScheme::from_str(scheme)
+            .map_err(|_| VersError::UnknownVersioningScheme(scheme.to_string()))?;
+
+        if !schemes.contains(&scheme_kind) {
+            return Err(VersError::InvalidRange(format!(
+                "versioning scheme `{scheme}` is not valid for this range's version type \
+                 (expected one of: {})",
+                schemes
+                    .iter()
+                    .map(|s| s.as_ref())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )));
+        }
+
+        Ok(())
+    }
+
     /// Normalize and validate the version range in a single operation.
     ///
     /// This method first normalizes the version range by sorting and simplifying constraints,
     /// then validates the resulting normalized range according to the rules in the specification.
+    /// It also validates that the `versioning_scheme` names a scheme implemented by the
+    /// range's version type.
     ///
     /// # Returns
     ///
     /// A `Result` indicating whether the normalization and validation were successful or not
-    pub fn normalize_and_validate(&mut self) -> Result<(), VersError> {
+    pub fn normalize_and_validate(&mut self) -> Result<(), VersError>
+    where
+        V: NativeVersionConverter,
+        V::Err: Into<VersError>,
+    {
+        Self::validate_versioning_scheme(&self.versioning_scheme)?;
+
         // Check if constraints are empty
         if self.constraints.is_empty() {
             return Err(VersError::EmptyConstraints);
+        }
+
+        // The all and none schemes are canonical only as the single wildcard
+        // constraint (`Any` over their payload-less version type); any other
+        // comparator has no canonical vers form. Their serde paths validate
+        // the version string itself, so only the comparator can drift here.
+        if matches!(
+            VersioningScheme::from_str(&self.versioning_scheme),
+            Ok(VersioningScheme::All | VersioningScheme::None)
+        ) && (self.constraints.len() != 1 || self.constraints[0].comparator != Any)
+        {
+            return Err(VersError::InvalidRange(format!(
+                "the {} scheme only accepts a single '*' constraint",
+                self.versioning_scheme
+            )));
         }
 
         // Check for star constraint
@@ -425,7 +498,7 @@ fn reject_adjacent_comparators<V: VersionType>(
     Ok(())
 }
 
-impl<V: VersionType> FromStr for VersVersionRange<V>
+impl<V: VersionType + NativeVersionConverter> FromStr for VersVersionRange<V>
 where
     V::Err: Into<VersError>,
 {
@@ -447,6 +520,8 @@ where
 
         let (versioning_scheme, constraints_str) =
             DynamicVersionRange::extract_versioning_scheme(s)?;
+
+        Self::validate_versioning_scheme(&versioning_scheme)?;
 
         // check constraints
         if constraints_str.is_empty() {
@@ -599,11 +674,15 @@ impl<V: VersionType> Display for VersVersionRange<V> {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
     use super::VersVersionRange;
     use crate::Comparator;
     use crate::VersError;
     use crate::VersionConstraint;
     use crate::range::VersionRange;
+    use crate::schemes::all::AllVersion;
+    use crate::schemes::none::NoneVersion;
     use crate::schemes::semver::SemVer;
 
     #[test]
@@ -743,6 +822,96 @@ mod tests {
         // Two disjoint intervals: below 1.0.0, or at/above 2.0.0 and beyond.
         let range: VersVersionRange<SemVer> = "vers:npm/<=1.0.0|>=2.0.0".parse().unwrap();
         assert!(range.is_open_ended());
+    }
+
+    #[test]
+    fn typed_serde_rejects_scheme_type_mismatch() {
+        let result = serde_json::from_str::<VersVersionRange<SemVer>>(
+            r#"{"versioning_scheme":"deb","constraints":[{"comparator":"GreaterThan","version":"1.0.0"}]}"#,
+        );
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("expected one of: semver, npm")
+        );
+    }
+
+    #[test]
+    fn typed_serde_allows_schemes_matching_the_version_type() {
+        for scheme in ["semver", "npm"] {
+            let range: VersVersionRange<SemVer> = serde_json::from_str(&format!(
+                r#"{{"versioning_scheme":"{scheme}","constraints":[{{"comparator":"GreaterThan","version":"1.0.0"}}]}}"#
+            ))
+            .unwrap();
+            assert_eq!(range.versioning_scheme(), scheme);
+        }
+    }
+
+    #[test]
+    fn typed_serde_rejects_unknown_scheme() {
+        let result = serde_json::from_str::<VersVersionRange<SemVer>>(
+            r#"{"versioning_scheme":"not-a-scheme","constraints":[{"comparator":"GreaterThan","version":"1.0.0"}]}"#,
+        );
+        assert_matches!(
+            result,
+            Err(err) if err.to_string().contains("Unknown versioning scheme")
+        );
+    }
+
+    #[test]
+    fn typed_parse_rejects_scheme_type_mismatch() {
+        let result: Result<VersVersionRange<AllVersion>, _> = "vers:npm/*".parse();
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("expected one of: all")
+        );
+
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:deb/>=1.0.0".parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn typed_parse_allows_matching_wildcard_schemes() {
+        let range: VersVersionRange<AllVersion> = "vers:all/*".parse().unwrap();
+        assert_eq!(range.to_string(), "vers:all/*");
+
+        let range: VersVersionRange<NoneVersion> = "vers:none/*".parse().unwrap();
+        assert_eq!(range.to_string(), "vers:none/*");
+    }
+
+    #[test]
+    fn none_scheme_star_matches_nothing() {
+        let range: VersVersionRange<NoneVersion> = "vers:none/*".parse().unwrap();
+        assert!(!range.contains(NoneVersion).unwrap());
+    }
+
+    #[test]
+    fn star_matches_all_for_other_schemes() {
+        let range: VersVersionRange<SemVer> = "vers:npm/*".parse().unwrap();
+        assert!(range.contains("1.2.3".parse().unwrap()).unwrap());
+    }
+
+    #[test]
+    fn typed_parse_rejects_unknown_scheme() {
+        let result: Result<VersVersionRange<SemVer>, _> = "vers:not-a-scheme/>=1.0.0".parse();
+        assert_matches!(result, Err(VersError::UnknownVersioningScheme(_)));
+    }
+
+    #[test]
+    fn normalize_and_validate_rejects_scheme_type_mismatch() {
+        let mut range = VersVersionRange::<AllVersion>::new(
+            "npm".to_string(),
+            vec![VersionConstraint::new(Comparator::Any, AllVersion)],
+        );
+        assert_matches!(
+            range.normalize_and_validate(),
+            Err(VersError::InvalidRange(_))
+        );
     }
 
     #[test]
