@@ -447,6 +447,7 @@ mod tests {
     use crate::Comparator;
     use crate::VersError;
     use crate::range::VersionRange;
+    use crate::schemes::none::NoneVersion;
 
     #[rstest]
     #[case::invalid_tab("vers:npm\t/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
@@ -757,6 +758,12 @@ mod tests {
         assert!(range.contains("1.5.0".to_string()).unwrap());
         assert!(!range.contains("2.0.0".to_string()).unwrap());
         assert!(!range.contains("0.9.0".to_string()).unwrap());
+    }
+
+    #[test]
+    fn none_scheme_star_matches_nothing() {
+        let range: DynamicVersionRange = "vers:none/*".parse().unwrap();
+        assert!(!range.contains(NoneVersion.to_string()).unwrap());
     }
 
     #[test]

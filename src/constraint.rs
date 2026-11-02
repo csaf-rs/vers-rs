@@ -332,15 +332,6 @@ impl<V: VersionType> VersionConstraint<V> {
             )));
         }
 
-        if comparator != Comparator::Any {
-            if version.is_empty() {
-                return Err(VersError::MissingVersionInConstraint);
-            }
-            if version == "*" {
-                return Err(VersError::InvalidConstraint(constraint_str.to_string()));
-            }
-        }
-
         if RESERVED_OPERATOR_TOKENS
             .iter()
             .any(|op| version.contains(op))
@@ -371,6 +362,15 @@ impl<V: VersionType> VersionConstraint<V> {
         } else {
             version.to_string()
         };
+
+        if comparator != Comparator::Any {
+            if version_str.is_empty() {
+                return Err(VersError::MissingVersionInConstraint);
+            }
+            if version_str == "*" {
+                return Err(VersError::InvalidConstraint(constraint_str.to_string()));
+            }
+        }
 
         let parsed_version = version_str.parse::<V>().map_err(|e| e.into())?;
 

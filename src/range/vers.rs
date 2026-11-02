@@ -108,6 +108,7 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
     ///
     /// The algorithm:
     /// 1. If the constraint list contains only "*", then the version is in the range
+    ///    (except for the "none" scheme, where nothing is contained)
     /// 2. Check for exact matches with equality comparators
     /// 3. Check for exact matches with inequality comparators
     /// 4. Check range constraints (>, >=, <, <=) to see if the version falls within any interval
@@ -137,9 +138,11 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
             return Ok(false);
         }
 
-        // If the constraint list contains only "*", then the version is in the range
+        // If the constraint list contains only "*", the versioning scheme decides
+        // how it matches: `none` designates the empty version range, so its `*`
+        // matches no version, while every other scheme's `*` matches all versions.
         if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
-            return Ok(true);
+            return Ok(self.versioning_scheme.as_str() != VersioningScheme::None.as_ref());
         }
 
         // Check for exact matches with equality and inequality comparators
@@ -879,6 +882,18 @@ mod tests {
 
         let range: VersVersionRange<NoneVersion> = "vers:none/*".parse().unwrap();
         assert_eq!(range.to_string(), "vers:none/*");
+    }
+
+    #[test]
+    fn none_scheme_star_matches_nothing() {
+        let range: VersVersionRange<NoneVersion> = "vers:none/*".parse().unwrap();
+        assert!(!range.contains(NoneVersion).unwrap());
+    }
+
+    #[test]
+    fn star_matches_all_for_other_schemes() {
+        let range: VersVersionRange<SemVer> = "vers:npm/*".parse().unwrap();
+        assert!(range.contains("1.2.3".parse().unwrap()).unwrap());
     }
 
     #[test]
