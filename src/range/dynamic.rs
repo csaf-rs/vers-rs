@@ -958,7 +958,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialize_all_none() {
+    fn test_deserialize_valid_all_none() {
         let json_data = r#"{
             "versioning_scheme": "all",
             "constraints": [

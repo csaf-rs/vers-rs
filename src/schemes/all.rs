@@ -50,7 +50,7 @@ impl<'de> Deserialize<'de> for AllVersion {
 
 impl Display for AllVersion {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "")
+        write!(f, "*")
     }
 }
 
