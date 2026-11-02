@@ -69,37 +69,7 @@ impl NativeVersionConverter for MavenVersion {
 
             // Since `maven-version-range` parses the string, we can extract the bounds for `vers-rs`
             // or map them as equivalent constraints. Alternatively, we can parse the comma-separated parts directly.
-            let inner_content = &raw[1..raw.len() - 1];
-            let parts: Vec<&str> = inner_content.split(',').map(|s| s.trim()).collect();
-
-            let mut constraints = Vec::new();
-            if let Some(lower) = parts.first()
-                && !lower.is_empty()
-            {
-                let inclusive = raw.starts_with('[');
-                let comp = if inclusive {
-                    Comparator::GreaterThanOrEqual
-                } else {
-                    Comparator::GreaterThan
-                };
-                constraints.push(VersionConstraint::new(comp, MavenVersion::from_str(lower)?));
-            }
-            if let Some(upper) = parts.get(1)
-                && !upper.is_empty()
-            {
-                let inclusive = raw.ends_with(']');
-                let comp = if inclusive {
-                    Comparator::LessThanOrEqual
-                } else {
-                    Comparator::LessThan
-                };
-                constraints.push(VersionConstraint::new(comp, MavenVersion::from_str(upper)?));
-            }
-
-            if constraints.is_empty() {
-                return Err(VersError::EmptyConstraints);
-            }
-            return Ok(constraints);
+            return parse_maven_unions(raw);
         }
 
         let clauses: Vec<&str> = if raw.contains(',') {
@@ -201,6 +171,127 @@ impl Ord for MavenVersion {
             _ => self.raw.cmp(&other.raw),
         }
     }
+}
+
+/// Parses Maven union ranges separated by commas outside of bracket groups,
+/// preserving the exact bounds and inclusivity of each sub-interval (e.g., `(,1.0.0],[1.2.0,)`).
+pub fn parse_maven_unions(raw: &str) -> Result<Vec<VersionConstraint<MavenVersion>>, VersError> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err(VersError::EmptyConstraints);
+    }
+
+    // Split intervals by commas that reside strictly outside of bracketed expressions
+    let intervals = split_maven_intervals(raw);
+    let mut all_constraints = Vec::new();
+
+    for interval_str in intervals {
+        let interval_str = interval_str.trim();
+        if interval_str.is_empty() {
+            continue;
+        }
+
+        // Parse each sub-interval separately to preserve its individual bounds
+        let constraints = parse_single_maven_interval(interval_str)?;
+        all_constraints.extend(constraints);
+    }
+
+    if all_constraints.is_empty() {
+        return Err(VersError::EmptyConstraints);
+    }
+
+    Ok(all_constraints)
+}
+
+/// Splits Maven intervals at commas while ignoring commas inside `[...]` or `(...)` brackets
+/// to properly support multi-interval union ranges.
+fn split_maven_intervals(s: &str) -> Vec<String> {
+    let mut intervals = Vec::new();
+    let mut current = String::new();
+    let mut depth = 0;
+
+    for c in s.chars() {
+        match c {
+            '[' | '(' => {
+                depth += 1;
+                current.push(c);
+            }
+            ']' | ')' => {
+                depth -= 1;
+                current.push(c);
+            }
+            // A comma splits intervals only when we are outside of any bracket pair
+            ',' if depth == 0 => {
+                intervals.push(current);
+                current = String::new();
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+    if !current.is_empty() || s.ends_with(',') {
+        intervals.push(current);
+    }
+    intervals
+}
+
+/// Parses a single Maven interval (e.g., `[1.0,2.0)` or `(,1.0]`) into constraints,
+/// correctly maintaining inclusivity rules for lower and upper bounds.
+fn parse_single_maven_interval(
+    raw: &str,
+) -> Result<Vec<VersionConstraint<MavenVersion>>, VersError> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Err(VersError::EmptyConstraints);
+    }
+
+    // Handle single version shorthand in Maven like `[1.0]`, mapping it to equality
+    if raw.starts_with('[') && raw.ends_with(']') && !raw[1..raw.len() - 1].contains(',') {
+        let ver_str = raw[1..raw.len() - 1].trim();
+        let version = MavenVersion::from_str(ver_str)?;
+        return Ok(vec![VersionConstraint::new(Comparator::Equal, version)]);
+    }
+
+    if raw.len() < 2 {
+        return Err(VersError::InvalidConstraint(format!(
+            "Invalid Maven interval format: '{}'",
+            raw
+        )));
+    }
+
+    let inner_content = &raw[1..raw.len() - 1];
+    let parts: Vec<&str> = inner_content.split(',').map(|s| s.trim()).collect();
+
+    let mut constraints = Vec::new();
+    if let Some(lower) = parts.first()
+        && !lower.is_empty()
+    {
+        let inclusive = raw.starts_with('[');
+        let comp = if inclusive {
+            Comparator::GreaterThanOrEqual
+        } else {
+            Comparator::GreaterThan
+        };
+        constraints.push(VersionConstraint::new(comp, MavenVersion::from_str(lower)?));
+    }
+    if let Some(upper) = parts.get(1)
+        && !upper.is_empty()
+    {
+        let inclusive = raw.ends_with(']');
+        let comp = if inclusive {
+            Comparator::LessThanOrEqual
+        } else {
+            Comparator::LessThan
+        };
+        constraints.push(VersionConstraint::new(comp, MavenVersion::from_str(upper)?));
+    }
+
+    if constraints.is_empty() {
+        return Err(VersError::EmptyConstraints);
+    }
+
+    Ok(constraints)
 }
 
 #[cfg(test)]
