@@ -4,19 +4,16 @@
 //! `NativeVersionConverter` trait, supporting Cargo dependency specification rules
 //! based on semver rules.
 
-use crate::VersError;
 use crate::VersionConstraint;
-use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
-use crate::is_ascii_vers_whitespace;
+use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
+use crate::{Comparator, VersError, VersioningScheme};
 use derive_more::Display;
 use semver::{Version, VersionReq};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::hash::{Hash, Hasher};
 use std::str::FromStr;
-
-pub const CARGO_SCHEME: &str = "cargo";
 
 #[derive(Display, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -29,7 +26,9 @@ impl Default for CargoVersion {
 }
 
 impl NativeVersionConverter for CargoVersion {
-    const SCHEME_NAME: &'static str = CARGO_SCHEME;
+    fn scheme_name() -> &'static str {
+        VersioningScheme::Cargo.as_ref()
+    }
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw
@@ -50,7 +49,7 @@ impl NativeVersionConverter for CargoVersion {
         let normalized_raw = normalize_cargo_req(raw);
         let req = VersionReq::parse(&normalized_raw).map_err(|e| {
             VersError::InvalidVersionFormat(
-                CARGO_SCHEME.to_string(),
+                Self::scheme_name().to_string(),
                 raw.to_string(),
                 e.to_string(),
             )
@@ -161,7 +160,11 @@ impl FromStr for CargoVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let v = Version::parse(s).map_err(|e| {
-            VersError::InvalidVersionFormat(CARGO_SCHEME.to_string(), s.to_string(), e.to_string())
+            VersError::InvalidVersionFormat(
+                Self::scheme_name().to_string(),
+                s.to_string(),
+                e.to_string(),
+            )
         })?;
         Ok(CargoVersion(v))
     }

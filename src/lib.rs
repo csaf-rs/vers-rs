@@ -1,83 +1,27 @@
 // Module declarations
-pub mod comparator;
 pub mod constraint;
-pub mod error;
+pub mod enums;
 pub mod range;
 pub mod schemes;
+pub mod util;
 
-pub use comparator::Comparator;
 pub use constraint::NativeVersionConverter;
 pub use constraint::VersionConstraint;
-pub use error::VersError;
+pub use enums::comparator::Comparator;
+pub use enums::error::VersError;
+pub use enums::schemes::VersioningScheme;
 pub use range::VersionRange;
 pub use range::dynamic::DynamicVersionRange;
 pub use range::vers::VersVersionRange;
 
-// u8::is_ascii_whitespace doesn't cover 0x0B so we define our own array of ASCII whitespace characters
-const ASCII_WHITESPACE_CHARACTERS: [u8; 6] = [b' ', b'\t', b'\n', b'\r', 0x0B, 0x0C];
-
-// A 256-entry bytemap indexed by byte value, built once at compile time, so checking whether a
-// byte is ASCII whitespace is an O(1) lookup instead of scanning ASCII_WHITESPACE_CHARACTERS.
-const ASCII_WHITESPACE_BYTEMAP: [bool; 256] = {
-    let mut map = [false; 256];
-    let mut i = 0;
-    while i < ASCII_WHITESPACE_CHARACTERS.len() {
-        map[ASCII_WHITESPACE_CHARACTERS[i] as usize] = true;
-        i += 1;
-    }
-    map
-};
-
-/// Returns `true` if `b` is one of the ASCII whitespace/control characters disallowed in VERS
-/// strings.
-#[inline]
-pub(crate) const fn is_ascii_vers_whitespace(b: u8) -> bool {
-    ASCII_WHITESPACE_BYTEMAP[b as usize]
-}
-const RESERVED_OPERATOR_TOKENS: [&str; 5] = [">", "<", "!=", "<=", ">="];
-
 #[cfg(feature = "wasm")]
 pub mod wasm;
-
-/// All versioning schemes (VERS **types**) defined by the [VERS specification](https://github.com/package-url/vers-spec).
-///
-/// This includes both the package ecosystem VERS types (named after their
-/// registered PURL type) and the general-purpose VERS types.
-///
-/// See <https://github.com/package-url/vers-spec/blob/main/docs/types/vers-types.md>
-/// for the authoritative list and descriptions of each scheme.
-pub const VERSIONING_SCHEMES: &[&str] = &[
-    // Package ecosystem VERS types
-    "alpm",
-    "apk",
-    "cargo",
-    "composer",
-    "cpan",
-    "dart",
-    "deb",
-    "gem",
-    "golang",
-    "hackage",
-    "maven",
-    "nuget",
-    "npm",
-    "pypi",
-    "rpm",
-    // General VERS types
-    "all",
-    "datetime",
-    "generic",
-    "intdot",
-    "lexicographic",
-    "none",
-    "semver",
-];
 
 /// Check if a string is a known versioning scheme (VERS **type**) as defined
 /// by the [VERS specification](https://github.com/package-url/vers-spec).
 ///
 /// The comparison is case-sensitive, matching the canonical scheme names
-/// listed in [`VERSIONING_SCHEMES`].
+/// represented by [`VersioningScheme`].
 ///
 /// # Examples
 ///
@@ -88,7 +32,7 @@ pub const VERSIONING_SCHEMES: &[&str] = &[
 /// assert!(!is_registered_scheme("not-a-scheme"));
 /// ```
 pub fn is_registered_scheme(scheme: &str) -> bool {
-    VERSIONING_SCHEMES.contains(&scheme)
+    scheme.parse::<VersioningScheme>().is_ok()
 }
 
 /// Parse a version range specifier string into a `DynamicVersionRange`.
