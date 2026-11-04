@@ -411,7 +411,7 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
+    use assert_matches::assert_matches;
     use std::mem::discriminant;
 
     use rstest::rstest;
