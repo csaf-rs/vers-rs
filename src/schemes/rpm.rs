@@ -4,10 +4,10 @@
 //! `NativeVersionConverter` trait, utilizing the `rpm-version` crate for specification
 //! rules, epoch/version/release parsing, and correct RPM sorting semantics.
 
-use crate::{VersError, VersioningScheme};
 use crate::VersionConstraint;
-use crate::enums::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
+use crate::enums::comparator::Comparator;
+use crate::{VersError, VersioningScheme};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};
@@ -87,7 +87,6 @@ impl NativeVersionConverter for RpmVersion {
     fn scheme_name() -> &'static str {
         VersioningScheme::Rpm.as_ref()
     }
-
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
