@@ -1,191 +1,58 @@
 //! Version constraint type for the RPM versioning scheme.
 //!
 //! This module contains the `RpmVersion` struct and its implementation of the
-//! `NativeVersionConverter` trait, supporting RPM specification rules (`rpmvercmp`),
-//! including epochs, version segments, release suffixes, tilde (`~`) pre-releases,
-//! and range/constraint expansion.
+//! `NativeVersionConverter` trait, utilizing the `rpm-version` crate for specification
+//! rules, epoch/version/release parsing, and correct RPM sorting semantics.
 
 use crate::VersError;
 use crate::VersionConstraint;
 use crate::comparator::Comparator;
 use crate::constraint::NativeVersionConverter;
-use derive_more::Display;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
+use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 pub static RPM_SCHEME: &str = "rpm";
 
-#[derive(Display, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-pub struct RpmVersion(String);
+pub struct RpmVersion {
+    raw: String,
+}
 
 impl Default for RpmVersion {
     fn default() -> Self {
-        RpmVersion("0-0".to_string())
-    }
-}
-
-// --- RPM rpmvercmp Algorithm Implementation ---
-
-fn rpmvercmp(a: &str, b: &str) -> Ordering {
-    if a == b {
-        return Ordering::Equal;
-    }
-
-    let mut chars_a = a.chars().peekable();
-    let mut chars_b = b.chars().peekable();
-
-    loop {
-        // 1. Skip non-alphanumeric and non-tilde characters
-        while let Some(&c) = chars_a.peek() {
-            if c.is_ascii_alphanumeric() || c == '~' {
-                break;
-            }
-            chars_a.next();
-        }
-        while let Some(&c) = chars_b.peek() {
-            if c.is_ascii_alphanumeric() || c == '~' {
-                break;
-            }
-            chars_b.next();
-        }
-
-        let a_peek = chars_a.peek().copied();
-        let b_peek = chars_b.peek().copied();
-
-        // If both reached the end, they are equal
-        if a_peek.is_none() && b_peek.is_none() {
-            return Ordering::Equal;
-        }
-        if a_peek.is_none() {
-            return if b_peek == Some('~') {
-                Ordering::Greater
-            } else {
-                Ordering::Less
-            };
-        }
-        if b_peek.is_none() {
-            return if a_peek == Some('~') {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            };
-        }
-
-        let ca = a_peek.unwrap();
-        let cb = b_peek.unwrap();
-
-        // 2. Handle tilde (~) logic explicitly per rpmvercmp.c spec
-        if ca == '~' || cb == '~' {
-            if ca != '~' {
-                return Ordering::Greater; // a does not have tilde, so a > b
-            }
-            if cb != '~' {
-                return Ordering::Less; // b does not have tilde, so a < b
-            }
-            chars_a.next();
-            chars_b.next();
-            continue;
-        }
-
-        // 3. Extract segments (numeric vs alphabetic)
-        let is_numeric = ca.is_ascii_digit();
-
-        let mut seg_a = String::new();
-        while let Some(&c) = chars_a.peek() {
-            if c == '~'
-                || !c.is_ascii_alphanumeric()
-                || !is_numeric && c.is_ascii_digit()
-                || is_numeric && !c.is_ascii_digit()
-            {
-                break;
-            }
-            seg_a.push(chars_a.next().unwrap());
-        }
-
-        let mut seg_b = String::new();
-        while let Some(&c) = chars_b.peek() {
-            if c == '~'
-                || !c.is_ascii_alphanumeric()
-                || !is_numeric && c.is_ascii_digit()
-                || is_numeric && !c.is_ascii_digit()
-            {
-                break;
-            }
-            seg_b.push(chars_b.next().unwrap());
-        }
-
-        if seg_b.is_empty() {
-            return if is_numeric {
-                Ordering::Greater
-            } else {
-                Ordering::Less
-            };
-        }
-        if seg_a.is_empty() {
-            return if is_numeric {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            };
-        }
-
-        if is_numeric {
-            let trimmed_a = seg_a.trim_start_matches('0');
-            let trimmed_b = seg_b.trim_start_matches('0');
-
-            if trimmed_a.len() != trimmed_b.len() {
-                return trimmed_a.len().cmp(&trimmed_b.len());
-            }
-
-            let ord = trimmed_a.cmp(trimmed_b);
-            if ord != Ordering::Equal {
-                return ord;
-            }
-
-            let ord_len = seg_a.len().cmp(&seg_b.len());
-            if ord_len != Ordering::Equal {
-                return ord_len;
-            }
-        } else {
-            let ord = seg_a.cmp(&seg_b);
-            if ord != Ordering::Equal {
-                return ord;
-            }
+        RpmVersion {
+            raw: "0-0".to_string(),
         }
     }
 }
 
-/// Parsed EVR components of an RPM package version string
-struct ParsedRpm {
-    epoch: i64,
-    version: String,
-    release: String,
+impl Serialize for RpmVersion {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.raw)
+    }
 }
 
-fn parse_rpm_version(s: &str) -> ParsedRpm {
-    let s = s.trim();
+impl<'de> Deserialize<'de> for RpmVersion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
 
-    // 1. Epoch parsing (e.g. 1:1.0-1)
-    let (epoch, rest) = if let Some(idx) = s.find(':') {
-        let e = s[..idx].parse::<i64>().unwrap_or(0);
-        (e, &s[idx + 1..])
-    } else {
-        (0, s)
-    };
-
-    // 2. Release parsing (e.g. 1.0-1.el9 -> version = 1.0, release = 1.el9)
-    let (version, release) = if let Some(idx) = rest.find('-') {
-        (&rest[..idx], &rest[idx + 1..])
-    } else {
-        (rest, "")
-    };
-
-    ParsedRpm {
-        epoch,
-        version: version.to_string(),
-        release: release.to_string(),
+impl PartialEq for RpmVersion {
+    fn eq(&self, other: &Self) -> bool {
+        let p1 = rpm_version::Evr::parse(&self.raw);
+        let p2 = rpm_version::Evr::parse(&other.raw);
+        p1 == p2
     }
 }
 
@@ -197,22 +64,21 @@ impl PartialOrd for RpmVersion {
 
 impl Ord for RpmVersion {
     fn cmp(&self, other: &Self) -> Ordering {
-        let p1 = parse_rpm_version(&self.0);
-        let p2 = parse_rpm_version(&other.0);
+        let p1 = rpm_version::Evr::parse(&self.raw);
+        let p2 = rpm_version::Evr::parse(&other.raw);
+        p1.cmp(&p2)
+    }
+}
 
-        // Compare Epochs numerically
-        if p1.epoch != p2.epoch {
-            return p1.epoch.cmp(&p2.epoch);
-        }
+impl std::hash::Hash for RpmVersion {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.raw.hash(state);
+    }
+}
 
-        // Compare Versions using rpmvercmp
-        let v_ord = rpmvercmp(&p1.version, &p2.version);
-        if v_ord != Ordering::Equal {
-            return v_ord;
-        }
-
-        // Compare Releases using rpmvercmp
-        rpmvercmp(&p1.release, &p2.release)
+impl Display for RpmVersion {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.raw)
     }
 }
 
@@ -221,6 +87,11 @@ impl NativeVersionConverter for RpmVersion {
     const SCHEME_NAME: &'static str = "rpm";
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
+        if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
+            return Err(VersError::InvalidConstraint(
+                "Control characters are not permitted in native version ranges".to_string(),
+            ));
+        }
         let raw = raw.trim();
         if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
@@ -231,40 +102,33 @@ impl NativeVersionConverter for RpmVersion {
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
             .collect();
-        let mut constraints = Vec::new();
 
+        if clauses.is_empty() {
+            return Err(VersError::EmptyConstraints);
+        }
+
+        let mut constraints = Vec::new();
         for clause in clauses {
-            constraints.extend(Self::parse_rpm_spec_expanded(clause)?);
+            constraints.push(Self::from_native_constraint(clause)?);
         }
 
         Ok(constraints)
     }
 
     fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
-        let constraints = Self::parse_rpm_spec_expanded(raw)?;
-        if constraints.len() == 1 {
-            Ok(constraints.into_iter().next().unwrap())
-        } else {
-            Err(VersError::InvalidConstraint(format!(
-                "Constraint '{}' expands to multiple bounds; please use from_native instead",
-                raw
-            )))
-        }
-    }
-}
-
-impl RpmVersion {
-    fn parse_rpm_spec_expanded(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         let raw = raw.trim();
+        if raw.is_empty() {
+            return Err(VersError::InvalidConstraint("Empty constraint".to_string()));
+        }
 
         if raw == "*" || raw == "==*" {
-            return Ok(vec![VersionConstraint::new(
+            return Ok(VersionConstraint::new(
                 Comparator::Any,
                 RpmVersion::default(),
-            )]);
+            ));
         }
 
-        let (comp, ver_str) = if let Some(s) = raw.strip_prefix("===") {
+        let (comparator, ver_str) = if let Some(s) = raw.strip_prefix("===") {
             (Comparator::Equal, s)
         } else if let Some(s) = raw.strip_prefix("==") {
             (Comparator::Equal, s)
@@ -282,10 +146,14 @@ impl RpmVersion {
             (Comparator::Equal, raw)
         };
 
-        Ok(vec![VersionConstraint::new(
-            comp,
-            RpmVersion(ver_str.trim().to_string()),
-        )])
+        let ver_str = ver_str.trim();
+        if ver_str.is_empty() {
+            return Err(VersError::MissingVersionInConstraint);
+        }
+
+        let parsed_version = RpmVersion::from_str(ver_str)?;
+
+        Ok(VersionConstraint::new(comparator, parsed_version))
     }
 }
 
@@ -293,6 +161,105 @@ impl FromStr for RpmVersion {
     type Err = VersError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(RpmVersion(s.trim().to_string()))
+        let s = s.trim();
+        if s.is_empty() {
+            return Err(VersError::InvalidConstraint(
+                "Empty version string".to_string(),
+            ));
+        }
+
+        // Validate via rpm_version parsing
+        let _ = rpm_version::Evr::parse(s);
+
+        Ok(RpmVersion { raw: s.to_string() })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::VersVersionRange;
+    use crate::range::VersionRange;
+
+    #[test]
+    fn test_rpm_version_parsing_valid() {
+        let v1 = RpmVersion::from_str("1.0.0-1.el9").unwrap();
+        assert_eq!(v1.to_string(), "1.0.0-1.el9");
+
+        let v2 = RpmVersion::from_str("2:1.2.3~rc1-5").unwrap();
+        assert_eq!(v2.to_string(), "2:1.2.3~rc1-5");
+    }
+
+    #[test]
+    fn test_rpm_version_parsing_invalid() {
+        assert!(RpmVersion::from_str("").is_err());
+    }
+
+    #[test]
+    fn test_rpm_version_ordering_numeric() {
+        let v9 = RpmVersion::from_str("1.9.0").unwrap();
+        let v10 = RpmVersion::from_str("1.10.0").unwrap();
+        assert!(v9 < v10);
+    }
+
+    #[test]
+    fn test_rpm_version_ordering_tildes() {
+        let v_rc = RpmVersion::from_str("1.0.0~rc1").unwrap();
+        let v_release = RpmVersion::from_str("1.0.0").unwrap();
+        assert!(v_rc < v_release);
+    }
+
+    #[test]
+    fn test_rpm_version_ordering_epochs() {
+        let v_low = RpmVersion::from_str("1:1.0.0").unwrap();
+        let v_high = RpmVersion::from_str("2:0.9.0").unwrap();
+        assert!(v_low < v_high);
+    }
+
+    #[test]
+    fn test_native_converter_constraints() {
+        let constraints = RpmVersion::from_native(">=1.0.0, <2.0.0").unwrap();
+        assert_eq!(constraints.len(), 2);
+        assert_eq!(constraints[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(constraints[0].version.to_string(), "1.0.0");
+        assert_eq!(constraints[1].comparator, Comparator::LessThan);
+        assert_eq!(constraints[1].version.to_string(), "2.0.0");
+    }
+
+    #[test]
+    fn test_native_converter_star() {
+        let constraints = RpmVersion::from_native("*").unwrap();
+        assert_eq!(constraints.len(), 1);
+        assert_eq!(constraints[0].comparator, Comparator::Any);
+    }
+
+    #[test]
+    fn test_rpm_version_range_evaluation() {
+        let range: VersVersionRange<RpmVersion> = "vers:rpm/>=1.0.0|<2.0.0".parse().unwrap();
+
+        assert!(
+            range
+                .contains(RpmVersion::from_str("1.5.0").unwrap())
+                .unwrap()
+        );
+        assert!(
+            !range
+                .contains(RpmVersion::from_str("2.0.0").unwrap())
+                .unwrap()
+        );
+        assert!(
+            !range
+                .contains(RpmVersion::from_str("0.9.0").unwrap())
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_serde_json_roundtrip() {
+        let v = RpmVersion::from_str("1:2.4.1-3.el8").unwrap();
+        let json = serde_json::to_string(&v).unwrap();
+        let deserialized: RpmVersion = serde_json::from_str(&json).unwrap();
+        assert_eq!(v, deserialized);
+        assert_eq!(v.to_string(), deserialized.to_string());
     }
 }

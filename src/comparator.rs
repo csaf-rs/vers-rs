@@ -33,7 +33,7 @@ pub enum Comparator {
 impl fmt::Display for Comparator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Comparator::Equal => write!(f, "="),
+            Comparator::Equal => write!(f, ""), // Implicit equality has no string representation
             Comparator::NotEqual => write!(f, "!="),
             Comparator::LessThan => write!(f, "<"),
             Comparator::LessThanOrEqual => write!(f, "<="),
