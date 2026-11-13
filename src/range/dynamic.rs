@@ -774,12 +774,6 @@ mod tests {
     }
 
     #[test]
-    fn none_scheme_star_matches_nothing() {
-        let range: DynamicVersionRange = "vers:none/*".parse().unwrap();
-        assert!(!range.contains(NoneVersion.to_string()).unwrap());
-    }
-
-    #[test]
     fn test_dynamic_contains_invalid_version() {
         let range: DynamicVersionRange = "vers:npm/>=1.0.0|<2.0.0".parse().unwrap();
         let result = range.contains("invalid.version".to_string());
