@@ -9,7 +9,7 @@
 
 use crate::VersVersionRange;
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
-use crate::{Comparator, VersError};
+use crate::{Comparator, VersError, VersioningScheme};
 use pct_str::PctStr;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
@@ -54,6 +54,29 @@ where
 {
     /// The vers scheme identifier for this version type (e.g. `"deb"`, `"semver"`).
     fn scheme_name() -> &'static str;
+
+    /// The VERS versioning schemes whose constraint syntax this version type
+    /// implements.
+    ///
+    /// Typed [`VersVersionRange`] construction validates that a range's
+    /// `versioning_scheme` names one of these schemes, so the scheme string
+    /// cannot drift away from the version type it is paired with (e.g. an
+    /// [`crate::schemes::all::AllVersion`]-typed range labelled `"npm"`).
+    ///
+    /// Defaults to `None`, which opts the version type out of that check.
+    /// Override and list the implemented schemes to opt in.
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        None
+    }
+
+    /// Whether a lone wildcard (`*`) constraint matches every version.
+    ///
+    /// Defaults to `true`, as for every regular scheme. Override to return
+    /// `false` for a version type whose wildcard designates the empty range
+    /// (the `none` scheme).
+    fn wildcard_matches_versions() -> bool {
+        true
+    }
 
     /// The character used to separate multiple native constraints within a
     /// single native range string.
@@ -318,10 +341,6 @@ impl<V: VersionType> VersionConstraint<V> {
             )));
         }
 
-        if version.is_empty() && comparator != Comparator::Any {
-            return Err(VersError::MissingVersionInConstraint);
-        }
-
         if RESERVED_OPERATOR_TOKENS
             .iter()
             .any(|op| version.contains(op))
@@ -353,6 +372,15 @@ impl<V: VersionType> VersionConstraint<V> {
             version.to_string()
         };
 
+        if comparator != Comparator::Any {
+            if version_str.is_empty() {
+                return Err(VersError::MissingVersionInConstraint);
+            }
+            if version_str == "*" {
+                return Err(VersError::InvalidConstraint(constraint_str.to_string()));
+            }
+        }
+
         let parsed_version = version_str.parse::<V>().map_err(|e| e.into())?;
 
         Ok(Self {
@@ -366,6 +394,7 @@ impl<V: VersionType> Display for VersionConstraint<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self.comparator {
             Comparator::Equal => write!(f, "{}", self.version), // Implicit equal prints no operator
+            Comparator::Any => write!(f, "{}", self.comparator), // The wildcard carries no version
             _ => write!(f, "{}{}", self.comparator, self.version), // Others print operator + version
         }
     }
@@ -539,6 +568,30 @@ mod native_version_converter_tests {
 
         let constraint = SemVer::from_native_constraint("*").unwrap();
         assert_eq!(constraint.comparator, Comparator::Any);
+    }
+}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+    use crate::schemes::all::AllVersion;
+    use crate::schemes::none::NoneVersion;
+    use crate::schemes::semver::SemVer;
+
+    #[test]
+    fn any_constraint_displays_as_single_asterisk() {
+        assert_eq!(
+            VersionConstraint::new(Comparator::Any, AllVersion).to_string(),
+            "*"
+        );
+        assert_eq!(
+            VersionConstraint::new(Comparator::Any, NoneVersion).to_string(),
+            "*"
+        );
+        assert_eq!(
+            VersionConstraint::new(Comparator::Any, SemVer::default()).to_string(),
+            "*"
+        );
     }
 }
 
