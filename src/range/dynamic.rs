@@ -452,7 +452,6 @@ mod tests {
     use crate::Comparator;
     use crate::VersError;
     use crate::range::VersionRange;
-    use crate::schemes::none::NoneVersion;
 
     #[rstest]
     #[case::invalid_tab("vers:npm\t/1.2.3", VersError::InvalidCharacters("blub".to_string()))]
