@@ -64,6 +64,11 @@ impl NativeVersionConverter for NoneVersion {
         Some(&[VersioningScheme::None])
     }
 
+    // `vers:none/*` designates the empty range: its wildcard matches nothing.
+    fn wildcard_matches_versions() -> bool {
+        false
+    }
+
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw
             .bytes()
@@ -125,11 +130,43 @@ mod tests {
     }
 
     #[test]
-    fn serde_rejects_noncanonical_range() {
-        assert!(
-            serde_json::from_str::<NoneVersion>(r#"{"versioning_scheme":"none","constraints":[]}"#)
-                .is_err()
+    fn serde_rejects_empty_range() {
+        let result = serde_json::from_str::<crate::VersVersionRange<NoneVersion>>(
+            r#"{"versioning_scheme":"none","constraints":[]}"#,
         );
+        assert_matches!(
+            result,
+            Err(err) if err.to_string().contains(&VersError::EmptyConstraints.to_string())
+        );
+    }
+
+    #[test]
+    fn serde_rejects_multiple_constraints() {
+        let result = serde_json::from_str::<crate::VersVersionRange<NoneVersion>>(
+            r#"{"versioning_scheme":"none","constraints":[{"comparator":"Any","version":"*"},{"comparator":"Any","version":"*"}]}"#,
+        );
+        assert_matches!(
+            result,
+            Err(err) if err.to_string().contains(INVALID_RANGE_ERROR)
+        );
+    }
+
+    #[test]
+    fn typed_range_contains_no_version() {
+        use crate::VersionRange;
+
+        let range: crate::VersVersionRange<NoneVersion> = "vers:none/*".parse().unwrap();
+        assert!(!range.contains(NoneVersion).unwrap());
+    }
+
+    #[test]
+    fn wildcard_constraint_is_neither_single_version_nor_open_ended() {
+        use crate::VersionRange;
+
+        let range: crate::VersVersionRange<NoneVersion> = "vers:none/*".parse().unwrap();
+        assert!(!range.is_single_version());
+        assert_eq!(range.single_version(), None);
+        assert!(!range.is_open_ended());
     }
 
     #[test]

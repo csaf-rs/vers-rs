@@ -90,7 +90,10 @@ where
     }
 }
 
-impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
+impl<V: VersionType + NativeVersionConverter> VersionRange<V> for VersVersionRange<V>
+where
+    V::Err: Into<VersError>,
+{
     /// Get the versioning scheme used by this range.
     ///
     /// # Returns
@@ -108,7 +111,8 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
     ///
     /// The algorithm:
     /// 1. If the constraint list contains only "*", then the version is in the range
-    ///    (except for the "none" scheme, where nothing is contained)
+    ///    (unless the version type's wildcard designates the empty range, as for
+    ///    the "none" scheme; see [`NativeVersionConverter::wildcard_matches_versions`])
     /// 2. Check for exact matches with equality comparators
     /// 3. Check for exact matches with inequality comparators
     /// 4. Check range constraints (>, >=, <, <=) to see if the version falls within any interval
@@ -138,11 +142,11 @@ impl<V: VersionType> VersionRange<V> for VersVersionRange<V> {
             return Ok(false);
         }
 
-        // If the constraint list contains only "*", the versioning scheme decides
-        // how it matches: `none` designates the empty version range, so its `*`
+        // If the constraint list contains only "*", the version type decides how
+        // it matches: `none` designates the empty version range, so its `*`
         // matches no version, while every other scheme's `*` matches all versions.
         if self.constraints.len() == 1 && self.constraints[0].comparator == Any {
-            return Ok(self.versioning_scheme.as_str() != VersioningScheme::None.as_ref());
+            return Ok(V::wildcard_matches_versions());
         }
 
         // Check for exact matches with equality and inequality comparators
@@ -654,18 +658,7 @@ impl<V: VersionType> Display for VersVersionRange<V> {
             return Ok(());
         }
 
-        // Convert all constraints to their string representations, handling 'Any' as '*'
-        let constraint_strs: Vec<String> = self
-            .constraints
-            .iter()
-            .map(|c| {
-                if c.comparator == Comparator::Any {
-                    "*".to_string()
-                } else {
-                    c.to_string()
-                }
-            })
-            .collect();
+        let constraint_strs: Vec<String> = self.constraints.iter().map(|c| c.to_string()).collect();
 
         // Join them together with '|'
         write!(f, "{}", constraint_strs.join("|"))
@@ -888,6 +881,24 @@ mod tests {
     fn none_scheme_star_matches_nothing() {
         let range: VersVersionRange<NoneVersion> = "vers:none/*".parse().unwrap();
         assert!(!range.contains(NoneVersion).unwrap());
+    }
+
+    // The empty-range semantics belong to the version type, not to the scheme
+    // label: a hand-built range of another version type labelled "none" still
+    // behaves like every other wildcard range.
+    #[test]
+    fn star_semantics_follow_version_type_not_scheme_label() {
+        let range = VersVersionRange::<SemVer>::new(
+            "none".to_string(),
+            vec![VersionConstraint::new(Comparator::Any, SemVer::default())],
+        );
+        assert!(range.contains("1.2.3".parse().unwrap()).unwrap());
+    }
+
+    #[test]
+    fn all_scheme_star_matches_everything() {
+        let range: VersVersionRange<AllVersion> = "vers:all/*".parse().unwrap();
+        assert!(range.contains(AllVersion).unwrap());
     }
 
     #[test]

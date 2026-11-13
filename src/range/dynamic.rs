@@ -232,6 +232,9 @@ impl VersionRange<String> for DynamicVersionRange {
     /// version string is always parsed leniently (tolerating leading zeros
     /// and an ignored suffix), same as the range itself.
     ///
+    /// For the `all` and `none` schemes the version string is ignored (not even
+    /// validated): `all` contains every string and `none` contains none.
+    ///
     /// # Arguments
     ///
     /// * `version_str` - The version string to check
@@ -264,8 +267,10 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::IntDot(range) => {
                 range.contains(version_str.parse::<IntDotVersion>()?)
             }
-            DynamicVersionRangeInner::All(_) => Ok(true),
-            DynamicVersionRangeInner::None(_) => Ok(false),
+            // `all` and `none` versions carry no payload, so the tested string
+            // is deliberately not parsed (or validated): only the range decides.
+            DynamicVersionRangeInner::All(range) => range.contains(AllVersion),
+            DynamicVersionRangeInner::None(range) => range.contains(NoneVersion),
         }
     }
 
@@ -892,6 +897,39 @@ mod tests {
         assert!(range.contains(input.to_string()).unwrap());
         let range: DynamicVersionRange = "vers:none/*".parse().unwrap();
         assert!(!range.contains(input.to_string()).unwrap());
+    }
+
+    #[test]
+    fn all_and_none_ignore_the_tested_version_string() {
+        let all: DynamicVersionRange = "vers:all/*".parse().unwrap();
+        assert!(all.contains("not a version!".to_string()).unwrap());
+
+        let none: DynamicVersionRange = "vers:none/*".parse().unwrap();
+        assert!(!none.contains("not a version!".to_string()).unwrap());
+    }
+
+    #[rstest]
+    #[case("vers:all/*")]
+    #[case("vers:none/*")]
+    fn all_and_none_expose_a_single_wildcard_constraint(#[case] input: &str) {
+        let range: DynamicVersionRange = input.parse().unwrap();
+        assert_eq!(
+            range.constraints(),
+            &vec![crate::VersionConstraint::new(
+                Comparator::Any,
+                "*".to_string()
+            )]
+        );
+        assert!(!range.is_single_version());
+        assert!(!range.is_open_ended());
+    }
+
+    #[rstest]
+    #[case("vers:ALL/*")]
+    #[case("vers:None/*")]
+    fn uppercase_all_and_none_schemes_are_rejected(#[case] input: &str) {
+        let result: Result<DynamicVersionRange, VersError> = input.parse();
+        assert_matches!(result, Err(VersError::UnknownVersioningScheme(_)));
     }
 
     #[rstest]

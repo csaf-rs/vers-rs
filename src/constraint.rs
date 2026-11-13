@@ -69,6 +69,15 @@ where
         None
     }
 
+    /// Whether a lone wildcard (`*`) constraint matches every version.
+    ///
+    /// Defaults to `true`, as for every regular scheme. Override to return
+    /// `false` for a version type whose wildcard designates the empty range
+    /// (the `none` scheme).
+    fn wildcard_matches_versions() -> bool {
+        true
+    }
+
     /// The character used to separate multiple native constraints within a
     /// single native range string.
     ///
@@ -385,6 +394,7 @@ impl<V: VersionType> Display for VersionConstraint<V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self.comparator {
             Comparator::Equal => write!(f, "{}", self.version), // Implicit equal prints no operator
+            Comparator::Any => write!(f, "{}", self.comparator), // The wildcard carries no version
             _ => write!(f, "{}{}", self.comparator, self.version), // Others print operator + version
         }
     }
@@ -558,6 +568,30 @@ mod native_version_converter_tests {
 
         let constraint = SemVer::from_native_constraint("*").unwrap();
         assert_eq!(constraint.comparator, Comparator::Any);
+    }
+}
+
+#[cfg(test)]
+mod display_tests {
+    use super::*;
+    use crate::schemes::all::AllVersion;
+    use crate::schemes::none::NoneVersion;
+    use crate::schemes::semver::SemVer;
+
+    #[test]
+    fn any_constraint_displays_as_single_asterisk() {
+        assert_eq!(
+            VersionConstraint::new(Comparator::Any, AllVersion).to_string(),
+            "*"
+        );
+        assert_eq!(
+            VersionConstraint::new(Comparator::Any, NoneVersion).to_string(),
+            "*"
+        );
+        assert_eq!(
+            VersionConstraint::new(Comparator::Any, SemVer::default()).to_string(),
+            "*"
+        );
     }
 }
 

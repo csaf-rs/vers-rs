@@ -114,6 +114,8 @@ mod tests {
 
     use super::*;
 
+    const INVALID_RANGE_ERROR_SUFFIX: &str = "the all scheme only accepts a single '*' constraint";
+
     #[test]
     fn only_wildcard_is_valid() {
         assert!(AllVersion::from_str("*").is_ok());
@@ -124,11 +126,43 @@ mod tests {
     }
 
     #[test]
-    fn serde_rejects_noncanonical_range() {
-        assert!(
-            serde_json::from_str::<AllVersion>(r#"{"versioning_scheme":"all","constraints":[]}"#)
-                .is_err()
+    fn serde_rejects_empty_range() {
+        let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
+            r#"{"versioning_scheme":"all","constraints":[]}"#,
         );
+        assert_matches!(
+            result,
+            Err(err) if err.to_string().contains(&VersError::EmptyConstraints.to_string())
+        );
+    }
+
+    #[test]
+    fn serde_rejects_multiple_constraints() {
+        let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
+            r#"{"versioning_scheme":"all","constraints":[{"comparator":"Any","version":"*"},{"comparator":"Any","version":"*"}]}"#,
+        );
+        assert_matches!(
+            result,
+            Err(err) if err.to_string().contains(INVALID_RANGE_ERROR_SUFFIX)
+        );
+    }
+
+    #[test]
+    fn typed_range_contains_every_version() {
+        use crate::VersionRange;
+
+        let range: crate::VersVersionRange<AllVersion> = "vers:all/*".parse().unwrap();
+        assert!(range.contains(AllVersion).unwrap());
+    }
+
+    #[test]
+    fn wildcard_constraint_is_neither_single_version_nor_open_ended() {
+        use crate::VersionRange;
+
+        let range: crate::VersVersionRange<AllVersion> = "vers:all/*".parse().unwrap();
+        assert!(!range.is_single_version());
+        assert_eq!(range.single_version(), None);
+        assert!(!range.is_open_ended());
     }
 
     #[test]
