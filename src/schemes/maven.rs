@@ -1,8 +1,10 @@
+//! Version constraint type for the Maven versioning scheme.
+
 use crate::VersionConstraint;
 use crate::constraint::NativeVersionConverter;
 use crate::enums::comparator::Comparator;
 use crate::{VersError, VersioningScheme};
-use maven_version_range::MavenVersionRange;
+use mvn_version::ComparableVersion;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::cmp::Ordering;
 use std::fmt::{self, Display, Formatter};
@@ -58,17 +60,8 @@ impl NativeVersionConverter for MavenVersion {
             return Err(VersError::EmptyConstraints);
         }
 
-        // If it is an official Maven range in parentheses ([...], (...))
+        // Official Maven bracket/parenthesis range syntax ([...], (...))
         if raw.starts_with('[') || raw.starts_with('(') {
-            let _parsed_range = MavenVersionRange::from_str(raw).map_err(|e| {
-                VersError::InvalidConstraint(format!(
-                    "Failed to parse Maven version range '{}': {}",
-                    raw, e
-                ))
-            })?;
-
-            // Since `maven-version-range` parses the string, we can extract the bounds for `vers-rs`
-            // or map them as equivalent constraints. Alternatively, we can parse the comma-separated parts directly.
             return parse_maven_unions(raw);
         }
 
@@ -121,9 +114,7 @@ impl NativeVersionConverter for MavenVersion {
             return Err(VersError::InvalidConstraint("Missing version".to_string()));
         }
 
-        let parsed_version = MavenVersion {
-            raw: version_str.to_string(),
-        };
+        let parsed_version = MavenVersion::from_str(version_str)?;
 
         Ok(VersionConstraint::new(comparator, parsed_version))
     }
@@ -140,10 +131,7 @@ impl FromStr for MavenVersion {
             ));
         }
 
-        // Validate the version string during parsing using maven-version-range
-        // by wrapping it into an exact range format `[version]`
-        let exact_range_str = format!("[{}]", s);
-        MavenVersionRange::from_str(&exact_range_str).map_err(|e| {
+        ComparableVersion::from_str(s).map_err(|e| {
             VersError::InvalidConstraint(format!("Invalid Maven version format '{}': {}", s, e))
         })?;
 
@@ -181,24 +169,24 @@ impl Ord for MavenVersion {
             return Ordering::Equal;
         }
 
-        match version_compare::compare(&self.raw, &other.raw) {
-            Ok(version_compare::Cmp::Lt) => Ordering::Less,
-            Ok(version_compare::Cmp::Eq) => Ordering::Equal,
-            Ok(version_compare::Cmp::Gt) => Ordering::Greater,
+        match (
+            ComparableVersion::from_str(&self.raw),
+            ComparableVersion::from_str(&other.raw),
+        ) {
+            (Ok(a), Ok(b)) => a.cmp(&b),
             _ => self.raw.cmp(&other.raw),
         }
     }
 }
 
 /// Parses Maven union ranges separated by commas outside of bracket groups,
-/// preserving the exact bounds and inclusivity of each sub-interval (e.g., `(,1.0.0],[1.2.0,)`).
+/// preserving the exact bounds and inclusivity of each sub-interval (e.g., `(,1.0.0],[1.2.0,]`).
 pub fn parse_maven_unions(raw: &str) -> Result<Vec<VersionConstraint<MavenVersion>>, VersError> {
     let raw = raw.trim();
     if raw.is_empty() {
         return Err(VersError::EmptyConstraints);
     }
 
-    // Split intervals by commas that reside strictly outside of bracketed expressions
     let intervals = split_maven_intervals(raw);
     let mut all_constraints = Vec::new();
 
@@ -208,7 +196,6 @@ pub fn parse_maven_unions(raw: &str) -> Result<Vec<VersionConstraint<MavenVersio
             continue;
         }
 
-        // Parse each sub-interval separately to preserve its individual bounds
         let constraints = parse_single_maven_interval(interval_str)?;
         all_constraints.extend(constraints);
     }
@@ -237,7 +224,6 @@ fn split_maven_intervals(s: &str) -> Vec<String> {
                 depth -= 1;
                 current.push(c);
             }
-            // A comma splits intervals only when we are outside of any bracket pair
             ',' if depth == 0 => {
                 intervals.push(current);
                 current = String::new();
@@ -342,7 +328,6 @@ mod tests {
         let v_nine = MavenVersion::from_str("1.9.0").unwrap();
         let v_ten = MavenVersion::from_str("1.10.0").unwrap();
 
-        // Semantischer Vergleich muss sicherstellen, dass 1.10 größer als 1.9 ist (kein reiner String-Vergleich)
         assert!(v_nine < v_ten);
     }
 
@@ -357,7 +342,6 @@ mod tests {
     #[test]
     fn test_maven_union_ranges_parsing() {
         let constraints = parse_maven_unions("(,1.0.0],[1.2.0,)").unwrap();
-        // Should produce 4 constraints: < 1.0.0 (or <=), <= 1.0.0, >= 1.2.0, etc.
         assert!(!constraints.is_empty());
     }
 
