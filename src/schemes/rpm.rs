@@ -147,6 +147,8 @@ impl NativeVersionConverter for RpmVersion {
             (Comparator::GreaterThan, s)
         } else if let Some(s) = raw.strip_prefix('<') {
             (Comparator::LessThan, s)
+        } else if let Some(s) = raw.strip_prefix('=') {
+            (Comparator::Equal, s)
         } else {
             (Comparator::Equal, raw)
         };
