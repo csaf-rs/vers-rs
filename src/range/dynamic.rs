@@ -556,7 +556,7 @@ mod tests {
     #[case("vers:none/!=%2A")]
     fn encoded_asterisk_after_operator_should_fail(#[case] input: &str) {
         let range: Result<DynamicVersionRange, VersError> = input.parse();
-        assert_matches!(range, Err(VersError::InvalidConstraint(_)));
+        assert!(matches!(range, Err(VersError::InvalidConstraint(_))));
     }
 
     #[rstest]
@@ -874,7 +874,7 @@ mod tests {
     #[case("vers:none/!=*")]
     fn testme(#[case] input: &str) {
         let range: Result<DynamicVersionRange, VersError> = input.parse();
-        assert_matches!(range, Err(VersError::InvalidConstraint(_)))
+        assert!(matches!(range, Err(VersError::InvalidConstraint(_))))
     }
 
     #[rstest]
@@ -921,7 +921,7 @@ mod tests {
     #[case("vers:None/*")]
     fn uppercase_all_and_none_schemes_are_rejected(#[case] input: &str) {
         let result: Result<DynamicVersionRange, VersError> = input.parse();
-        assert_matches!(result, Err(VersError::UnknownVersioningScheme(_)));
+        assert!(matches!(result, Err(VersError::UnknownVersioningScheme(_))));
     }
 
     #[rstest]
@@ -1036,10 +1036,10 @@ mod tests {
         let result = serde_json::from_str::<DynamicVersionRange>(
             r#"{"constraints" : [ {"comparator": "LessThan", "version": "*"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains("versioning_scheme")
-        );
+        ));
     }
 
     #[rstest]
@@ -1054,7 +1054,7 @@ mod tests {
         // (`schemes::all` / `schemes::none`); errors are re-wrapped as
         // `serde_json::Error` at this level.
         let result = serde_json::from_str::<DynamicVersionRange>(json);
-        assert_matches!(result, Err(_));
+        assert!(matches!(result, Err(_)));
     }
 
     #[cfg(feature = "wasm")]
