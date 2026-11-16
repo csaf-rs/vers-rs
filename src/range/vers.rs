@@ -667,17 +667,15 @@ impl<V: VersionType> Display for VersVersionRange<V> {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
-
     use super::VersVersionRange;
     use crate::Comparator;
     use crate::VersError;
     use crate::VersionConstraint;
     use crate::constraint::NativeVersionConverter;
     use crate::range::VersionRange;
-    use crate::schemes::rpm::RpmVersion;
     use crate::schemes::all::AllVersion;
     use crate::schemes::none::NoneVersion;
+    use crate::schemes::rpm::RpmVersion;
     use crate::schemes::semver::SemVer;
     use std::str::FromStr;
 
@@ -850,10 +848,10 @@ mod tests {
         let result = serde_json::from_str::<VersVersionRange<SemVer>>(
             r#"{"versioning_scheme":"not-a-scheme","constraints":[{"comparator":"GreaterThan","version":"1.0.0"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains("Unknown versioning scheme")
-        );
+        ));
     }
 
     #[test]
@@ -913,7 +911,7 @@ mod tests {
     #[test]
     fn typed_parse_rejects_unknown_scheme() {
         let result: Result<VersVersionRange<SemVer>, _> = "vers:not-a-scheme/>=1.0.0".parse();
-        assert_matches!(result, Err(VersError::UnknownVersioningScheme(_)));
+        assert!(matches!(result, Err(VersError::UnknownVersioningScheme(_))));
     }
 
     #[test]
@@ -922,10 +920,10 @@ mod tests {
             "npm".to_string(),
             vec![VersionConstraint::new(Comparator::Any, AllVersion)],
         );
-        assert_matches!(
+        assert!(matches!(
             range.normalize_and_validate(),
             Err(VersError::InvalidRange(_))
-        );
+        ));
     }
 
     #[test]
