@@ -50,9 +50,7 @@ impl<'de> Deserialize<'de> for RpmVersion {
 
 impl PartialEq for RpmVersion {
     fn eq(&self, other: &Self) -> bool {
-        let p1 = rpm_version::Evr::parse(&self.raw);
-        let p2 = rpm_version::Evr::parse(&other.raw);
-        p1 == p2
+        self.cmp(other) == Ordering::Equal
     }
 }
 
