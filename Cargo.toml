@@ -31,7 +31,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = { version = "0.6", optional = true }
 serde_json = "1.0.151"
 debversion = { version = "0.5.4", features = ["serde"] }
+rpm-version = "0.5.1"
 
 [dev-dependencies]
 rstest = "0.28.0"
 wasm-bindgen-test = "0.3"
+assert_matches = "1.5"
