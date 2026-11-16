@@ -13,6 +13,7 @@ use std::str::FromStr;
 
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(type = "string"))]
 pub struct PypiVersion {
     inner: PypiVersionInner,
     raw: String,
