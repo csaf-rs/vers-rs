@@ -30,6 +30,10 @@ impl NativeVersionConverter for CargoVersion {
         VersioningScheme::Cargo.as_ref()
     }
 
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        Some(&[VersioningScheme::Cargo])
+    }
+
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw
             .bytes()

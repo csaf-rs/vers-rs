@@ -107,6 +107,10 @@ impl NativeVersionConverter for IntDotVersion {
         VersioningScheme::Intdot.as_ref()
     }
 
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        Some(&[VersioningScheme::Intdot])
+    }
+
     // `intdot` uses the standard vers operators, separator, wildcard, and
     // constraint-parsing logic (the trait defaults): since `FromStr` for
     // `IntDotVersion` already parses leniently (there's no separate
