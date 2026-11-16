@@ -70,7 +70,11 @@ impl Ord for RpmVersion {
 
 impl std::hash::Hash for RpmVersion {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.raw.hash(state);
+        let evr = rpm_version::Evr::parse(&self.raw);
+        let epoch = if evr.epoch().is_empty() { "0" } else { evr.epoch() };
+        rpm_version::version_sortkey(epoch).hash(state);
+        rpm_version::version_sortkey(evr.version()).hash(state);
+        rpm_version::version_sortkey(evr.release()).hash(state);
     }
 }
 
