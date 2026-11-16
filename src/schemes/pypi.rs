@@ -1,5 +1,5 @@
 //! Version constraint type for the PyPI versioning scheme.
-//!
+
 use crate::VersionConstraint;
 use crate::constraint::NativeVersionConverter;
 use crate::enums::comparator::Comparator;
@@ -15,14 +15,23 @@ use std::str::FromStr;
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "wasm", tsify(type = "string"))]
 pub struct PypiVersion {
-    inner: PypiVersionInner,
+    inner: Option<PypiVersionInner>,
     raw: String,
+}
+
+impl PypiVersion {
+    fn from_arbitrary(raw: &str) -> Self {
+        PypiVersion {
+            inner: PypiVersionInner::from_str(raw).ok(),
+            raw: raw.to_string(),
+        }
+    }
 }
 
 impl Default for PypiVersion {
     fn default() -> Self {
         PypiVersion {
-            inner: PypiVersionInner::from_str("0.0.0").unwrap(),
+            inner: PypiVersionInner::from_str("0.0.0").ok(),
             raw: "0.0.0".to_string(),
         }
     }
@@ -73,11 +82,14 @@ impl NativeVersionConverter for PypiVersion {
         // Arbitrary equality (===) handling
         if let Some(stripped) = raw.strip_prefix("===") {
             let ver_str = stripped.trim();
-            let version = PypiVersion::from_str(ver_str)?;
+            if ver_str.is_empty() {
+                return Err(VersError::MissingVersionInConstraint);
+            }
+            let version = PypiVersion::from_arbitrary(ver_str);
             return Ok(vec![VersionConstraint::new(Comparator::Equal, version)]);
         }
 
-        // Wildcard support: ==1.4.* -> expand to >=1.4.0, <1.5
+        // Wildcard support: ==1.4.* -> >=1.4.0, <2
         if let Some(stripped) = raw.strip_prefix("==") {
             let ver_str = stripped.trim();
             if let Some(base) = ver_str.strip_suffix(".*") {
@@ -134,13 +146,16 @@ impl NativeVersionConverter for PypiVersion {
             return Err(VersError::EmptyConstraints);
         }
 
-        intersect_pypi_constraints(constraints)
+        Ok(constraints)
     }
 
     fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
         if let Some(stripped) = raw.strip_prefix("===") {
             let ver_str = stripped.trim();
-            let version = PypiVersion::from_str(ver_str)?;
+            if ver_str.is_empty() {
+                return Err(VersError::MissingVersionInConstraint);
+            }
+            let version = PypiVersion::from_arbitrary(ver_str);
             return Ok(VersionConstraint::new(Comparator::Equal, version));
         }
 
@@ -172,7 +187,7 @@ impl FromStr for PypiVersion {
         })?;
 
         Ok(PypiVersion {
-            inner,
+            inner: Some(inner),
             raw: original_raw,
         })
     }
@@ -186,7 +201,10 @@ impl Display for PypiVersion {
 
 impl PartialEq for PypiVersion {
     fn eq(&self, other: &Self) -> bool {
-        self.inner == other.inner
+        match (&self.inner, &other.inner) {
+            (Some(a), Some(b)) => a == b,
+            _ => self.raw == other.raw,
+        }
     }
 }
 
@@ -194,7 +212,10 @@ impl Eq for PypiVersion {}
 
 impl Hash for PypiVersion {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner.hash(state);
+        match &self.inner {
+            Some(inner) => inner.hash(state),
+            None => self.raw.hash(state),
+        }
     }
 }
 
@@ -206,7 +227,10 @@ impl PartialOrd for PypiVersion {
 
 impl Ord for PypiVersion {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.inner.cmp(&other.inner)
+        match (&self.inner, &other.inner) {
+            (Some(a), Some(b)) => a.cmp(b),
+            _ => self.raw.cmp(&other.raw),
+        }
     }
 }
 
@@ -219,7 +243,9 @@ fn calculate_pypi_compatible_upper_bound(v: &str) -> String {
         return v.to_string();
     }
     release.pop();
-    let last = release.pop().unwrap();
+    let Some(last) = release.pop() else {
+        return v.to_string();
+    };
     let mut upper: Vec<String> = release.iter().map(|part| part.to_string()).collect();
     upper.push((u128::from(last) + 1).to_string());
     let upper = upper.join(".");
@@ -235,7 +261,21 @@ fn calculate_pypi_wildcard_upper_bound(v: &str) -> String {
         return format!("{}.0", v);
     };
     let mut release = version.release().to_vec();
-    let last = release.pop().unwrap();
+    if release.len() < 2 {
+        let Some(last) = release.pop() else {
+            return format!("{}.0", v);
+        };
+        let next = (u128::from(last) + 1).to_string();
+        return if version.epoch() == 0 {
+            next
+        } else {
+            format!("{}!{}", version.epoch(), next)
+        };
+    }
+    release.pop();
+    let Some(last) = release.pop() else {
+        return format!("{}.0", v);
+    };
     let mut upper: Vec<String> = release.iter().map(|part| part.to_string()).collect();
     upper.push((u128::from(last) + 1).to_string());
     let upper = upper.join(".");
@@ -244,175 +284,4 @@ fn calculate_pypi_wildcard_upper_bound(v: &str) -> String {
     } else {
         format!("{}!{}", version.epoch(), upper)
     }
-}
-
-fn intersect_pypi_constraints(
-    raw_constraints: Vec<VersionConstraint<PypiVersion>>,
-) -> Result<Vec<VersionConstraint<PypiVersion>>, VersError> {
-    let mut lower: Option<(Comparator, PypiVersion)> = None;
-    let mut upper: Option<(Comparator, PypiVersion)> = None;
-    let mut equals: Vec<PypiVersion> = Vec::new();
-    let mut not_equals: Vec<PypiVersion> = Vec::new();
-    let passthrough: Vec<VersionConstraint<PypiVersion>> = Vec::new();
-
-    for c in raw_constraints {
-        match c.comparator {
-            Comparator::Any => {}
-            Comparator::Equal => {
-                if let Some(existing) = equals.first()
-                    && existing != &c.version
-                {
-                    return Err(VersError::InvalidConstraint(format!(
-                        "Contradictory equality constraints '{}' and '{}'",
-                        existing, c.version
-                    )));
-                }
-                if !equals.contains(&c.version) {
-                    equals.push(c.version);
-                }
-            }
-            Comparator::NotEqual => {
-                if !not_equals.contains(&c.version) {
-                    not_equals.push(c.version);
-                }
-            }
-            Comparator::GreaterThan | Comparator::GreaterThanOrEqual => {
-                lower = Some(match lower {
-                    None => (c.comparator, c.version),
-                    Some((prev_comp, prev_ver)) => match c.version.cmp(&prev_ver) {
-                        Ordering::Greater => (c.comparator, c.version),
-                        Ordering::Less => (prev_comp, prev_ver),
-                        Ordering::Equal => {
-                            let comp = if matches!(
-                                (prev_comp, c.comparator),
-                                (Comparator::GreaterThan, _) | (_, Comparator::GreaterThan)
-                            ) {
-                                Comparator::GreaterThan
-                            } else {
-                                Comparator::GreaterThanOrEqual
-                            };
-                            (comp, prev_ver)
-                        }
-                    },
-                });
-            }
-            Comparator::LessThan | Comparator::LessThanOrEqual => {
-                upper = Some(match upper {
-                    None => (c.comparator, c.version),
-                    Some((prev_comp, prev_ver)) => match c.version.cmp(&prev_ver) {
-                        Ordering::Less => (c.comparator, c.version),
-                        Ordering::Greater => (prev_comp, prev_ver),
-                        Ordering::Equal => {
-                            let comp = if matches!(
-                                (prev_comp, c.comparator),
-                                (Comparator::LessThan, _) | (_, Comparator::LessThan)
-                            ) {
-                                Comparator::LessThan
-                            } else {
-                                Comparator::LessThanOrEqual
-                            };
-                            (comp, prev_ver)
-                        }
-                    },
-                });
-            }
-        }
-    }
-
-    // Tighten inclusive bounds excluded by !=
-    if let Some((Comparator::GreaterThanOrEqual, ref l_ver)) = lower
-        && not_equals.contains(l_ver)
-    {
-        lower = Some((Comparator::GreaterThan, l_ver.clone()));
-    }
-    if let Some((Comparator::LessThanOrEqual, ref u_ver)) = upper
-        && not_equals.contains(u_ver)
-    {
-        upper = Some((Comparator::LessThan, u_ver.clone()));
-    }
-
-    // If an explicit == constraint exists, validate it against all bounds
-    if let Some(eq_ver) = equals.into_iter().next() {
-        if let Some((ref l_comp, ref l_ver)) = lower {
-            let invalid = match l_comp {
-                Comparator::GreaterThanOrEqual => eq_ver < *l_ver,
-                Comparator::GreaterThan => eq_ver <= *l_ver,
-                _ => false,
-            };
-            if invalid {
-                return Err(VersError::InvalidConstraint(format!(
-                    "Version '{}' violates lower bound",
-                    eq_ver
-                )));
-            }
-        }
-        if let Some((ref u_comp, ref u_ver)) = upper {
-            let invalid = match u_comp {
-                Comparator::LessThanOrEqual => eq_ver > *u_ver,
-                Comparator::LessThan => eq_ver >= *u_ver,
-                _ => false,
-            };
-            if invalid {
-                return Err(VersError::InvalidConstraint(format!(
-                    "Version '{}' violates upper bound",
-                    eq_ver
-                )));
-            }
-        }
-        if not_equals.contains(&eq_ver) {
-            return Err(VersError::InvalidConstraint(format!(
-                "Version '{}' is both required and excluded",
-                eq_ver
-            )));
-        }
-
-        let mut result = vec![VersionConstraint::new(Comparator::Equal, eq_ver)];
-        result.extend(passthrough);
-        return Ok(result);
-    }
-
-    // Check lower vs. upper interval satisfiability
-    if let (Some((l_comp, l_ver)), Some((u_comp, u_ver))) = (&lower, &upper) {
-        match l_ver.cmp(u_ver) {
-            Ordering::Greater => {
-                return Err(VersError::InvalidConstraint(format!(
-                    "Unsatisfiable version range: lower bound '{}' > upper bound '{}'",
-                    l_ver, u_ver
-                )));
-            }
-            Ordering::Equal => {
-                if matches!(l_comp, Comparator::GreaterThanOrEqual)
-                    && matches!(u_comp, Comparator::LessThanOrEqual)
-                    && !not_equals.contains(l_ver)
-                {
-                    let mut result = vec![VersionConstraint::new(Comparator::Equal, l_ver.clone())];
-                    result.extend(passthrough);
-                    return Ok(result);
-                }
-                return Err(VersError::InvalidConstraint(format!(
-                    "Empty version interval around '{}'",
-                    l_ver
-                )));
-            }
-            Ordering::Less => {}
-        }
-    }
-
-    let mut result = Vec::new();
-    if let Some((l_comp, l_ver)) = lower {
-        result.push(VersionConstraint::new(l_comp, l_ver));
-    }
-    if let Some((u_comp, u_ver)) = upper {
-        result.push(VersionConstraint::new(u_comp, u_ver));
-    }
-    for ne_ver in not_equals {
-        result.push(VersionConstraint::new(Comparator::NotEqual, ne_ver));
-    }
-    result.extend(passthrough);
-
-    if result.is_empty() {
-        return Err(VersError::EmptyConstraints);
-    }
-
-    Ok(result)
 }
