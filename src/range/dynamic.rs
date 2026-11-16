@@ -2,7 +2,7 @@ use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{
     all::AllVersion, cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion,
-    none::NoneVersion, semver::SemVer,
+    maven::MavenVersion, none::NoneVersion, semver::SemVer,
 };
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{VersError, VersVersionRange, VersionConstraint, VersioningScheme};
@@ -27,6 +27,8 @@ enum DynamicVersionRangeInner {
     Deb(VersVersionRange<DebVersion>),
     /// Cargo-based range ("cargo" scheme)
     Cargo(VersVersionRange<CargoVersion>),
+    /// Maven-based range ("maven" scheme)
+    Maven(VersVersionRange<MavenVersion>),
     /// Generic dot-separated-integers range ("intdot" scheme)
     IntDot(VersVersionRange<IntDotVersion>),
     /// Universal range ("all" scheme)
@@ -110,6 +112,7 @@ macro_rules! dispatch_inner {
             DynamicVersionRangeInner::SemVer($range) => $expr,
             DynamicVersionRangeInner::Deb($range) => $expr,
             DynamicVersionRangeInner::Cargo($range) => $expr,
+            DynamicVersionRangeInner::Maven($range) => $expr,
             DynamicVersionRangeInner::IntDot($range) => $expr,
             DynamicVersionRangeInner::All($range) => $expr,
             DynamicVersionRangeInner::None($range) => $expr,
@@ -156,6 +159,9 @@ impl DynamicVersionRange {
             }
             VersioningScheme::Cargo => {
                 DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
+            }
+            VersioningScheme::Maven => {
+                DynamicVersionRangeInner::Maven(MavenVersion::from_native_string(scheme, raw)?)
             }
             VersioningScheme::Intdot => {
                 DynamicVersionRangeInner::IntDot(IntDotVersion::from_native_string(scheme, raw)?)
@@ -264,6 +270,9 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::Cargo(range) => {
                 range.contains(version_str.parse::<CargoVersion>()?)
             }
+            DynamicVersionRangeInner::Maven(range) => {
+                range.contains(version_str.parse::<MavenVersion>()?)
+            }
             DynamicVersionRangeInner::IntDot(range) => {
                 range.contains(version_str.parse::<IntDotVersion>()?)
             }
@@ -355,6 +364,7 @@ impl FromStr for DynamicVersionRange {
             VersioningScheme::Deb => DynamicVersionRangeInner::Deb(s.parse()?),
             VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(s.parse()?),
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(s.parse()?),
+            VersioningScheme::Maven => DynamicVersionRangeInner::Maven(s.parse()?),
             VersioningScheme::All => DynamicVersionRangeInner::All(s.parse()?),
             VersioningScheme::None => DynamicVersionRangeInner::None(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
@@ -422,6 +432,9 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
+            VersioningScheme::Maven => DynamicVersionRangeInner::Maven(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
             VersioningScheme::All => DynamicVersionRangeInner::All(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
@@ -443,7 +456,6 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
     use std::mem::discriminant;
 
     use rstest::rstest;
@@ -517,7 +529,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0>1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::UnencodedOperator(_));
+        assert!(matches!(err, VersError::UnencodedOperator(_)));
     }
 
     #[test]
@@ -525,7 +537,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::MissingVersionInConstraint);
+        assert!(matches!(err, VersError::MissingVersionInConstraint));
     }
 
     #[test]
@@ -533,7 +545,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0%3X1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]
@@ -541,7 +553,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:cargo/%091.2.3".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]
@@ -557,7 +569,7 @@ mod tests {
     #[case("vers:none/!=%2A")]
     fn encoded_asterisk_after_operator_should_fail(#[case] input: &str) {
         let range: Result<DynamicVersionRange, VersError> = input.parse();
-        assert_matches!(range, Err(VersError::InvalidConstraint(_)));
+        assert!(matches!(range, Err(VersError::InvalidConstraint(_))));
     }
 
     #[rstest]
@@ -875,7 +887,7 @@ mod tests {
     #[case("vers:none/!=*")]
     fn testme(#[case] input: &str) {
         let range: Result<DynamicVersionRange, VersError> = input.parse();
-        assert_matches!(range, Err(VersError::InvalidConstraint(_)))
+        assert!(matches!(range, Err(VersError::InvalidConstraint(_))))
     }
 
     #[rstest]
@@ -922,7 +934,7 @@ mod tests {
     #[case("vers:None/*")]
     fn uppercase_all_and_none_schemes_are_rejected(#[case] input: &str) {
         let result: Result<DynamicVersionRange, VersError> = input.parse();
-        assert_matches!(result, Err(VersError::UnknownVersioningScheme(_)));
+        assert!(matches!(result, Err(VersError::UnknownVersioningScheme(_))));
     }
 
     #[rstest]
@@ -1037,10 +1049,10 @@ mod tests {
         let result = serde_json::from_str::<DynamicVersionRange>(
             r#"{"constraints" : [ {"comparator": "LessThan", "version": "*"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains("versioning_scheme")
-        );
+        ));
     }
 
     #[rstest]
@@ -1055,7 +1067,7 @@ mod tests {
         // (`schemes::all` / `schemes::none`); errors are re-wrapped as
         // `serde_json::Error` at this level.
         let result = serde_json::from_str::<DynamicVersionRange>(json);
-        assert_matches!(result, Err(_));
+        assert!(result.is_err());
     }
 
     #[cfg(feature = "wasm")]
