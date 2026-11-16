@@ -218,22 +218,23 @@ impl Ord for PypiVersion {
 }
 
 fn calculate_pypi_compatible_upper_bound(v: &str) -> String {
-    let core = v.split(['-', '+']).next().unwrap_or(v);
-    let parts: Vec<&str> = core.split('.').collect();
-
-    if parts.len() >= 2
-        && let Ok(mut minor) = parts[parts.len() - 2].parse::<u64>()
-    {
-        minor += 1;
-        let minor_str = minor.to_string();
-        let mut new_parts: Vec<String> = parts[..parts.len() - 2]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        new_parts.push(minor_str);
-        return new_parts.join(".");
+    let Ok(version) = PypiVersionInner::from_str(v) else {
+        return v.to_string();
+    };
+    let mut release = version.release().to_vec();
+    if release.len() < 2 {
+        return v.to_string();
     }
-    v.to_string()
+    release.pop();
+    let last = release.pop().unwrap();
+    let mut upper: Vec<String> = release.iter().map(|part| part.to_string()).collect();
+    upper.push((u128::from(last) + 1).to_string());
+    let upper = upper.join(".");
+    if version.epoch() == 0 {
+        upper
+    } else {
+        format!("{}!{}", version.epoch(), upper)
+    }
 }
 
 fn calculate_pypi_wildcard_upper_bound(v: &str) -> String {
