@@ -667,16 +667,18 @@ impl<V: VersionType> Display for VersVersionRange<V> {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
-
     use super::VersVersionRange;
     use crate::Comparator;
     use crate::VersError;
     use crate::VersionConstraint;
+    use crate::constraint::NativeVersionConverter;
     use crate::range::VersionRange;
     use crate::schemes::all::AllVersion;
     use crate::schemes::none::NoneVersion;
+    use crate::schemes::pypi::PypiVersion;
     use crate::schemes::semver::SemVer;
+    use std::cmp::Ordering;
+    use std::str::FromStr;
 
     #[test]
     fn test_invalid_scheme() {
@@ -847,10 +849,10 @@ mod tests {
         let result = serde_json::from_str::<VersVersionRange<SemVer>>(
             r#"{"versioning_scheme":"not-a-scheme","constraints":[{"comparator":"GreaterThan","version":"1.0.0"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains("Unknown versioning scheme")
-        );
+        ));
     }
 
     #[test]
@@ -910,7 +912,7 @@ mod tests {
     #[test]
     fn typed_parse_rejects_unknown_scheme() {
         let result: Result<VersVersionRange<SemVer>, _> = "vers:not-a-scheme/>=1.0.0".parse();
-        assert_matches!(result, Err(VersError::UnknownVersioningScheme(_)));
+        assert!(matches!(result, Err(VersError::UnknownVersioningScheme(_))));
     }
 
     #[test]
@@ -919,10 +921,10 @@ mod tests {
             "npm".to_string(),
             vec![VersionConstraint::new(Comparator::Any, AllVersion)],
         );
-        assert_matches!(
+        assert!(matches!(
             range.normalize_and_validate(),
             Err(VersError::InvalidRange(_))
-        );
+        ));
     }
 
     #[test]
@@ -930,5 +932,109 @@ mod tests {
         // Two disjoint intervals, but the highest one is still capped from above.
         let range: VersVersionRange<SemVer> = "vers:npm/<1.0.0|>=2.0.0|<3.0.0".parse().unwrap();
         assert!(!range.is_open_ended());
+    }
+
+    #[test]
+    fn test_pypi_version_ordering() {
+        let dev = PypiVersion::from_str("1.0.0.dev1").unwrap();
+        let alpha = PypiVersion::from_str("1.0.0a1").unwrap();
+        let beta = PypiVersion::from_str("1.0.0b1").unwrap();
+        let rc = PypiVersion::from_str("1.0.0rc1").unwrap();
+        let final_ver = PypiVersion::from_str("1.0.0").unwrap();
+        let post = PypiVersion::from_str("1.0.0.post1").unwrap();
+        let ep = PypiVersion::from_str("1!1.0.0").unwrap();
+
+        assert!(dev < alpha);
+        assert!(alpha < beta);
+        assert!(beta < rc);
+        assert!(rc < final_ver);
+        assert!(final_ver < post);
+        assert!(post < ep);
+    }
+
+    #[test]
+    fn test_pypi_intervals() {
+        let range: Vec<VersionConstraint<PypiVersion>> =
+            PypiVersion::from_native(">=1.0.0,<2.0.0").unwrap();
+        assert_eq!(range.len(), 2);
+        assert_eq!(range[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(range[0].version.to_string(), "1.0.0");
+        assert_eq!(range[1].comparator, Comparator::LessThan);
+        assert_eq!(range[1].version.to_string(), "2.0.0");
+    }
+
+    #[test]
+    fn test_pypi_comprehensive_ordering() {
+        // 1. Lifecycle ordering (dev < alpha < beta < rc < release < post < epoch)
+        let dev = PypiVersion::from_str("1.0.0.dev1").unwrap();
+        let alpha = PypiVersion::from_str("1.0.0a1").unwrap();
+        let beta = PypiVersion::from_str("1.0.0b1").unwrap();
+        let rc = PypiVersion::from_str("1.0.0rc1").unwrap();
+        let final_ver = PypiVersion::from_str("1.0.0").unwrap();
+        let post = PypiVersion::from_str("1.0.0.post1").unwrap();
+        let ep = PypiVersion::from_str("1!1.0.0").unwrap();
+
+        assert!(dev < alpha);
+        assert!(alpha < beta);
+        assert!(beta < rc);
+        assert!(rc < final_ver);
+        assert!(final_ver < post);
+        assert!(post < ep);
+
+        // 2. Local version build metadata ordering (PEP 440 compliant)
+        let local_base = PypiVersion::from_str("1.0.0").unwrap();
+        let local_2 = PypiVersion::from_str("1.0.0+git.2").unwrap();
+        let local_10 = PypiVersion::from_str("1.0.0+git.10").unwrap();
+
+        assert!(local_base < local_2);
+        assert!(local_base < local_10);
+        assert!(local_2 < local_10);
+    }
+
+    #[test]
+    fn test_pypi_native_parsing_and_expansions() {
+        // Compatible release (~=) expansion
+        let range_compat = PypiVersion::from_native("~=1.4.2").unwrap();
+        assert_eq!(range_compat.len(), 2);
+        assert_eq!(range_compat[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(range_compat[0].version.to_string(), "1.4.2");
+        assert_eq!(range_compat[1].comparator, Comparator::LessThan);
+        assert_eq!(range_compat[1].version.to_string(), "1.5");
+
+        // Wildcard expansion (==1.4.*)
+        let range_wildcard = PypiVersion::from_native("==1.4.*").unwrap();
+        assert_eq!(range_wildcard.len(), 2);
+        assert_eq!(range_wildcard[0].comparator, Comparator::GreaterThanOrEqual);
+        assert_eq!(range_wildcard[0].version.to_string(), "1.4.0");
+        assert_eq!(range_wildcard[1].comparator, Comparator::LessThan);
+        assert_eq!(range_wildcard[1].version.to_string(), "2");
+
+        // Arbitrary equality (===)
+        let arb = PypiVersion::from_native_constraint("===v1.0-custom").unwrap();
+        assert_eq!(arb.comparator, Comparator::Equal);
+        assert_eq!(arb.version.to_string(), "v1.0-custom");
+    }
+
+    #[test]
+    fn test_pypi_edge_cases_and_normalization() {
+        // 1. Trailing zero equivalence (1.0 == 1.0.0)
+        let v1 = PypiVersion::from_str("1.0").unwrap();
+        let v2 = PypiVersion::from_str("1.0.0").unwrap();
+        assert_eq!(v1.cmp(&v2), Ordering::Equal);
+
+        // 2. Pre-release separator variations (1.0.0-rc1 == 1.0.0rc1)
+        let rc_hyphen = PypiVersion::from_str("1.0.0-rc1").unwrap();
+        let rc_dot = PypiVersion::from_str("1.0.0.rc1").unwrap();
+        let rc_flat = PypiVersion::from_str("1.0.0rc1").unwrap();
+        assert_eq!(rc_hyphen.cmp(&rc_dot), Ordering::Equal);
+        assert_eq!(rc_dot.cmp(&rc_flat), Ordering::Equal);
+
+        // 3. Case insensitivity (1.0.0RC1 == 1.0.0rc1 and +BUILD.1 == +build.1)
+        let uppercase_rc = PypiVersion::from_str("1.0.0RC1").unwrap();
+        assert_eq!(uppercase_rc.cmp(&rc_flat), Ordering::Equal);
+
+        let local_upper = PypiVersion::from_str("1.0.0+BUILD.2").unwrap();
+        let local_lower = PypiVersion::from_str("1.0.0+build.2").unwrap();
+        assert_eq!(local_upper.cmp(&local_lower), Ordering::Equal);
     }
 }
