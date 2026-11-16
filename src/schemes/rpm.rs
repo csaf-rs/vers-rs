@@ -17,6 +17,7 @@ pub static RPM_SCHEME: &str = "rpm";
 
 #[derive(Clone, Debug, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "wasm", tsify(type = "string"))]
 pub struct RpmVersion {
     raw: String,
 }
