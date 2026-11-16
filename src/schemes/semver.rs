@@ -21,6 +21,11 @@ impl NativeVersionConverter for SemVer {
     fn scheme_name() -> &'static str {
         VersioningScheme::Semver.as_ref()
     }
+
+    // One version type backs two VERS schemes: "semver" and its "npm" alias.
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        Some(&[VersioningScheme::Semver, VersioningScheme::Npm])
+    }
 }
 
 impl Default for SemVer {
