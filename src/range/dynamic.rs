@@ -1067,7 +1067,7 @@ mod tests {
         // (`schemes::all` / `schemes::none`); errors are re-wrapped as
         // `serde_json::Error` at this level.
         let result = serde_json::from_str::<DynamicVersionRange>(json);
-        assert!(matches!(result, Err(_)));
+        assert!(result.is_err());
     }
 
     #[cfg(feature = "wasm")]
