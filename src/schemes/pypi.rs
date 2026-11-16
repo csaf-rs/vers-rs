@@ -237,10 +237,17 @@ fn calculate_pypi_compatible_upper_bound(v: &str) -> String {
 }
 
 fn calculate_pypi_wildcard_upper_bound(v: &str) -> String {
-    let parts: Vec<&str> = v.split('.').collect();
-    if let Ok(mut major) = parts[0].parse::<u64>() {
-        major += 1;
-        return major.to_string();
+    let Ok(version) = PypiVersionInner::from_str(v) else {
+        return format!("{}.0", v);
+    };
+    let mut release = version.release().to_vec();
+    let last = release.pop().unwrap();
+    let mut upper: Vec<String> = release.iter().map(|part| part.to_string()).collect();
+    upper.push((u128::from(last) + 1).to_string());
+    let upper = upper.join(".");
+    if version.epoch() == 0 {
+        upper
+    } else {
+        format!("{}!{}", version.epoch(), upper)
     }
-    format!("{}.0", v)
 }
