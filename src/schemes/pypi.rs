@@ -163,20 +163,13 @@ impl FromStr for PypiVersion {
         let s = s.trim();
         let original_raw = s.to_string();
 
-        let inner = match PypiVersionInner::from_str(s) {
-            Ok(v) => v,
-            Err(_) => {
-                let clean = s.strip_prefix('v').unwrap_or(s);
-                let base = clean.split('-').next().unwrap_or(clean);
-                PypiVersionInner::from_str(base).map_err(|e| {
-                    VersError::InvalidVersionFormat(
-                        Self::scheme_name().to_string(),
-                        s.to_string(),
-                        e.to_string(),
-                    )
-                })?
-            }
-        };
+        let inner = PypiVersionInner::from_str(s).map_err(|e| {
+            VersError::InvalidVersionFormat(
+                Self::scheme_name().to_string(),
+                s.to_string(),
+                e.to_string(),
+            )
+        })?;
 
         Ok(PypiVersion {
             inner,
