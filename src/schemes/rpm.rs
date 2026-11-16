@@ -175,8 +175,21 @@ impl FromStr for RpmVersion {
             ));
         }
 
-        // Validate via rpm_version parsing
-        let _ = rpm_version::Evr::parse(s);
+        let evr = rpm_version::Evr::parse(s);
+        if evr.version().is_empty()
+            || (s.contains(':')
+                && (evr.epoch().is_empty()
+                    || !evr.epoch().bytes().all(|b| b.is_ascii_digit())))
+            || s.bytes()
+                .any(|b| matches!(b, b'<' | b'>' | b'=' | b'!' | b'*' | b'|'))
+        {
+            return Err(VersError::InvalidVersionFormat(
+                Self::scheme_name().to_string(),
+                s.to_string(),
+                "RPM versions require a nonempty version, a numeric epoch when specified, and no embedded constraint operators or wildcards"
+                    .to_string(),
+            ));
+        }
 
         Ok(RpmVersion { raw: s.to_string() })
     }
