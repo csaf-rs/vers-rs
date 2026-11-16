@@ -134,7 +134,7 @@ impl NativeVersionConverter for PypiVersion {
             return Err(VersError::EmptyConstraints);
         }
 
-        Ok(constraints)
+        intersect_pypi_constraints(constraints)
     }
 
     fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
@@ -244,4 +244,175 @@ fn calculate_pypi_wildcard_upper_bound(v: &str) -> String {
     } else {
         format!("{}!{}", version.epoch(), upper)
     }
+}
+
+fn intersect_pypi_constraints(
+    raw_constraints: Vec<VersionConstraint<PypiVersion>>,
+) -> Result<Vec<VersionConstraint<PypiVersion>>, VersError> {
+    let mut lower: Option<(Comparator, PypiVersion)> = None;
+    let mut upper: Option<(Comparator, PypiVersion)> = None;
+    let mut equals: Vec<PypiVersion> = Vec::new();
+    let mut not_equals: Vec<PypiVersion> = Vec::new();
+    let passthrough: Vec<VersionConstraint<PypiVersion>> = Vec::new();
+
+    for c in raw_constraints {
+        match c.comparator {
+            Comparator::Any => {}
+            Comparator::Equal => {
+                if let Some(existing) = equals.first()
+                    && existing != &c.version
+                {
+                    return Err(VersError::InvalidConstraint(format!(
+                        "Contradictory equality constraints '{}' and '{}'",
+                        existing, c.version
+                    )));
+                }
+                if !equals.contains(&c.version) {
+                    equals.push(c.version);
+                }
+            }
+            Comparator::NotEqual => {
+                if !not_equals.contains(&c.version) {
+                    not_equals.push(c.version);
+                }
+            }
+            Comparator::GreaterThan | Comparator::GreaterThanOrEqual => {
+                lower = Some(match lower {
+                    None => (c.comparator, c.version),
+                    Some((prev_comp, prev_ver)) => match c.version.cmp(&prev_ver) {
+                        Ordering::Greater => (c.comparator, c.version),
+                        Ordering::Less => (prev_comp, prev_ver),
+                        Ordering::Equal => {
+                            let comp = if matches!(
+                                (prev_comp, c.comparator),
+                                (Comparator::GreaterThan, _) | (_, Comparator::GreaterThan)
+                            ) {
+                                Comparator::GreaterThan
+                            } else {
+                                Comparator::GreaterThanOrEqual
+                            };
+                            (comp, prev_ver)
+                        }
+                    },
+                });
+            }
+            Comparator::LessThan | Comparator::LessThanOrEqual => {
+                upper = Some(match upper {
+                    None => (c.comparator, c.version),
+                    Some((prev_comp, prev_ver)) => match c.version.cmp(&prev_ver) {
+                        Ordering::Less => (c.comparator, c.version),
+                        Ordering::Greater => (prev_comp, prev_ver),
+                        Ordering::Equal => {
+                            let comp = if matches!(
+                                (prev_comp, c.comparator),
+                                (Comparator::LessThan, _) | (_, Comparator::LessThan)
+                            ) {
+                                Comparator::LessThan
+                            } else {
+                                Comparator::LessThanOrEqual
+                            };
+                            (comp, prev_ver)
+                        }
+                    },
+                });
+            }
+        }
+    }
+
+    // Tighten inclusive bounds excluded by !=
+    if let Some((Comparator::GreaterThanOrEqual, ref l_ver)) = lower
+        && not_equals.contains(l_ver)
+    {
+        lower = Some((Comparator::GreaterThan, l_ver.clone()));
+    }
+    if let Some((Comparator::LessThanOrEqual, ref u_ver)) = upper
+        && not_equals.contains(u_ver)
+    {
+        upper = Some((Comparator::LessThan, u_ver.clone()));
+    }
+
+    // If an explicit == constraint exists, validate it against all bounds
+    if let Some(eq_ver) = equals.into_iter().next() {
+        if let Some((ref l_comp, ref l_ver)) = lower {
+            let invalid = match l_comp {
+                Comparator::GreaterThanOrEqual => eq_ver < *l_ver,
+                Comparator::GreaterThan => eq_ver <= *l_ver,
+                _ => false,
+            };
+            if invalid {
+                return Err(VersError::InvalidConstraint(format!(
+                    "Version '{}' violates lower bound",
+                    eq_ver
+                )));
+            }
+        }
+        if let Some((ref u_comp, ref u_ver)) = upper {
+            let invalid = match u_comp {
+                Comparator::LessThanOrEqual => eq_ver > *u_ver,
+                Comparator::LessThan => eq_ver >= *u_ver,
+                _ => false,
+            };
+            if invalid {
+                return Err(VersError::InvalidConstraint(format!(
+                    "Version '{}' violates upper bound",
+                    eq_ver
+                )));
+            }
+        }
+        if not_equals.contains(&eq_ver) {
+            return Err(VersError::InvalidConstraint(format!(
+                "Version '{}' is both required and excluded",
+                eq_ver
+            )));
+        }
+
+        let mut result = vec![VersionConstraint::new(Comparator::Equal, eq_ver)];
+        result.extend(passthrough);
+        return Ok(result);
+    }
+
+    // Check lower vs. upper interval satisfiability
+    if let (Some((l_comp, l_ver)), Some((u_comp, u_ver))) = (&lower, &upper) {
+        match l_ver.cmp(u_ver) {
+            Ordering::Greater => {
+                return Err(VersError::InvalidConstraint(format!(
+                    "Unsatisfiable version range: lower bound '{}' > upper bound '{}'",
+                    l_ver, u_ver
+                )));
+            }
+            Ordering::Equal => {
+                if matches!(l_comp, Comparator::GreaterThanOrEqual)
+                    && matches!(u_comp, Comparator::LessThanOrEqual)
+                    && !not_equals.contains(l_ver)
+                {
+                    let mut result = vec![VersionConstraint::new(Comparator::Equal, l_ver.clone())];
+                    result.extend(passthrough);
+                    return Ok(result);
+                }
+                return Err(VersError::InvalidConstraint(format!(
+                    "Empty version interval around '{}'",
+                    l_ver
+                )));
+            }
+            Ordering::Less => {}
+        }
+    }
+
+    let mut result = Vec::new();
+    if let Some((l_comp, l_ver)) = lower {
+        result.push(VersionConstraint::new(l_comp, l_ver));
+    }
+    if let Some((u_comp, u_ver)) = upper {
+        result.push(VersionConstraint::new(u_comp, u_ver));
+    }
+    for ne_ver in not_equals {
+        result.push(VersionConstraint::new(Comparator::NotEqual, ne_ver));
+    }
+    result.extend(passthrough);
+
+    if result.is_empty() {
+        return Err(VersError::EmptyConstraints);
+    }
+
+    Ok(result)
 }
