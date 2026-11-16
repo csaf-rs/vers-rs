@@ -72,7 +72,11 @@ impl Ord for RpmVersion {
 impl std::hash::Hash for RpmVersion {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         let evr = rpm_version::Evr::parse(&self.raw);
-        let epoch = if evr.epoch().is_empty() { "0" } else { evr.epoch() };
+        let epoch = if evr.epoch().is_empty() {
+            "0"
+        } else {
+            evr.epoch()
+        };
         rpm_version::version_sortkey(epoch).hash(state);
         rpm_version::version_sortkey(evr.version()).hash(state);
         rpm_version::version_sortkey(evr.release()).hash(state);
@@ -178,8 +182,7 @@ impl FromStr for RpmVersion {
         let evr = rpm_version::Evr::parse(s);
         if evr.version().is_empty()
             || (s.contains(':')
-                && (evr.epoch().is_empty()
-                    || !evr.epoch().bytes().all(|b| b.is_ascii_digit())))
+                && (evr.epoch().is_empty() || !evr.epoch().bytes().all(|b| b.is_ascii_digit())))
             || s.bytes()
                 .any(|b| matches!(b, b'<' | b'>' | b'=' | b'!' | b'*' | b'|'))
         {
