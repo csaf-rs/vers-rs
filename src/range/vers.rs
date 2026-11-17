@@ -24,7 +24,7 @@
 use crate::Comparator::*;
 use crate::DynamicVersionRange;
 use crate::VersionConstraint;
-use crate::constraint::{NativeVersionConverter, VersionType};
+use crate::constraint::{validate_constraint_syntax, NativeVersionConverter, VersionType};
 use crate::range::VersionRange;
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{Comparator, VersError, VersioningScheme};
@@ -525,6 +525,7 @@ where
         let (versioning_scheme, constraints_str) =
             DynamicVersionRange::extract_versioning_scheme(s)?;
 
+        validate_constraint_syntax(&constraints_str)?;
         Self::validate_versioning_scheme(&versioning_scheme)?;
 
         // check constraints

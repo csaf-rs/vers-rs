@@ -1,4 +1,4 @@
-use crate::constraint::NativeVersionConverter;
+use crate::constraint::{validate_constraint_syntax, NativeVersionConverter};
 use crate::range::VersionRange;
 use crate::schemes::{
     all::AllVersion, cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion,
@@ -343,10 +343,14 @@ impl FromStr for DynamicVersionRange {
         }
 
         // Extract the versioning scheme first to determine which type to use
-        let (versioning_scheme, _) = DynamicVersionRange::extract_versioning_scheme(s)?;
+        let (versioning_scheme, constraints_str) =
+            DynamicVersionRange::extract_versioning_scheme(s)?;
+
+        // Operator-level errors are deeper than an unknown scheme, so report them first.
+        validate_constraint_syntax(&constraints_str)?;
 
         let scheme_kind = VersioningScheme::from_str(&versioning_scheme)
-            .map_err(|_| VersError::UnknownVersioningScheme(versioning_scheme.to_string()))?;
+            .map_err(|_| VersError::UnknownVersioningScheme(versioning_scheme.clone()))?;
 
         let inner = match scheme_kind {
             VersioningScheme::Semver | VersioningScheme::Npm => {
@@ -1124,5 +1128,11 @@ mod tests {
         let constrained: crate::VersVersionRange<crate::schemes::semver::SemVer> =
             "vers:semver/>=1.0.0|<2.0.0".parse().unwrap();
         assert!(!constrained.is_only_wildcard());
+    }
+
+    #[test]
+    fn operator_error_is_reported_before_unknown_scheme() {
+        let result: Result<DynamicVersionRange, VersError> = "vers:not-a-scheme/=<1.0.0".parse();
+        assert!(matches!(result, Err(VersError::InvalidConstraint(_))));
     }
 }
