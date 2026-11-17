@@ -443,7 +443,6 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
     use std::mem::discriminant;
 
     use rstest::rstest;
@@ -517,7 +516,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0>1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::UnencodedOperator(_));
+        assert!(matches!(err, VersError::UnencodedOperator(_)));
     }
 
     #[test]
@@ -525,7 +524,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::MissingVersionInConstraint);
+        assert!(matches!(err, VersError::MissingVersionInConstraint));
     }
 
     #[test]
@@ -533,7 +532,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:semver/>2.0%3X1".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]
@@ -541,7 +540,7 @@ mod tests {
         let result: Result<DynamicVersionRange, VersError> = "vers:cargo/%091.2.3".parse();
         assert!(result.is_err());
         let err = result.unwrap_err();
-        assert_matches!(err, VersError::InvalidConstraint(_));
+        assert!(matches!(err, VersError::InvalidConstraint(_)));
     }
 
     #[test]
@@ -557,7 +556,7 @@ mod tests {
     #[case("vers:none/!=%2A")]
     fn encoded_asterisk_after_operator_should_fail(#[case] input: &str) {
         let range: Result<DynamicVersionRange, VersError> = input.parse();
-        assert_matches!(range, Err(VersError::InvalidConstraint(_)));
+        assert!(matches!(range, Err(VersError::InvalidConstraint(_))));
     }
 
     #[rstest]
@@ -875,7 +874,7 @@ mod tests {
     #[case("vers:none/!=*")]
     fn testme(#[case] input: &str) {
         let range: Result<DynamicVersionRange, VersError> = input.parse();
-        assert_matches!(range, Err(VersError::InvalidConstraint(_)))
+        assert!(matches!(range, Err(VersError::InvalidConstraint(_))))
     }
 
     #[rstest]
@@ -922,7 +921,7 @@ mod tests {
     #[case("vers:None/*")]
     fn uppercase_all_and_none_schemes_are_rejected(#[case] input: &str) {
         let result: Result<DynamicVersionRange, VersError> = input.parse();
-        assert_matches!(result, Err(VersError::UnknownVersioningScheme(_)));
+        assert!(matches!(result, Err(VersError::UnknownVersioningScheme(_))));
     }
 
     #[rstest]
@@ -1037,10 +1036,10 @@ mod tests {
         let result = serde_json::from_str::<DynamicVersionRange>(
             r#"{"constraints" : [ {"comparator": "LessThan", "version": "*"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains("versioning_scheme")
-        );
+        ));
     }
 
     #[rstest]
@@ -1055,7 +1054,7 @@ mod tests {
         // (`schemes::all` / `schemes::none`); errors are re-wrapped as
         // `serde_json::Error` at this level.
         let result = serde_json::from_str::<DynamicVersionRange>(json);
-        assert_matches!(result, Err(_));
+        assert!(matches!(result, Err(_)));
     }
 
     #[cfg(feature = "wasm")]
@@ -1076,5 +1075,54 @@ mod tests {
                 "export type DynamicVersionRange = VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion> | VersVersionRange<AllVersion> | VersVersionRange<NoneVersion>;"
             )
         );
+    }
+
+    #[rstest]
+    #[case::all("vers:all/*")]
+    #[case::none("vers:none/*")]
+    #[case::npm("vers:npm/*")]
+    #[case::semver("vers:semver/*")]
+    #[case::cargo("vers:cargo/*")]
+    #[case::deb("vers:deb/*")]
+    #[case::intdot("vers:intdot/*")]
+    fn test_is_only_wildcard_true_for_single_star(#[case] input: &str) {
+        let range: DynamicVersionRange = input.parse().unwrap();
+        assert!(range.is_only_wildcard());
+    }
+
+    #[rstest]
+    #[case("all", "*")]
+    #[case("none", "*")]
+    fn test_is_only_wildcard_true_for_parse_native_star(#[case] scheme: &str, #[case] raw: &str) {
+        let range = DynamicVersionRange::parse_native(scheme, raw).unwrap();
+        assert!(range.is_only_wildcard());
+    }
+
+    #[rstest]
+    #[case::exact_version("vers:npm/1.2.3")]
+    #[case::gte("vers:semver/>=1.0.0")]
+    #[case::gt("vers:semver/>1.0.0")]
+    #[case::lte("vers:semver/<=1.0.0")]
+    #[case::lt("vers:semver/<1.0.0")]
+    #[case::neq("vers:semver/!=1.0.0")]
+    #[case::bounded_range("vers:npm/>=1.0.0|<2.0.0")]
+    #[case::multi_equal("vers:semver/1.0.0|1.2.0")]
+    #[case::deb_constraint("vers:deb/>=1.0")]
+    #[case::cargo_constraint("vers:cargo/1.2.3")]
+    #[case::intdot_constraint("vers:intdot/1.2.3")]
+    fn test_is_only_wildcard_false_for_non_wildcard_ranges(#[case] input: &str) {
+        let range: DynamicVersionRange = input.parse().unwrap();
+        assert!(!range.is_only_wildcard());
+    }
+
+    #[test]
+    fn test_is_only_wildcard_on_typed_vers_version_range() {
+        let wildcard: crate::VersVersionRange<crate::schemes::semver::SemVer> =
+            "vers:semver/*".parse().unwrap();
+        assert!(wildcard.is_only_wildcard());
+
+        let constrained: crate::VersVersionRange<crate::schemes::semver::SemVer> =
+            "vers:semver/>=1.0.0|<2.0.0".parse().unwrap();
+        assert!(!constrained.is_only_wildcard());
     }
 }

@@ -70,6 +70,11 @@ pub trait VersionRange<V: VersionType> {
                 )
             })
     }
+    /// Returns `true` if the range consists solely of a single wildcard (`*`) constraint.
+    fn is_only_wildcard(&self) -> bool {
+        let constraints = self.constraints();
+        constraints.len() == 1 && constraints[0].comparator == crate::Comparator::Any
+    }
 }
 
 pub mod dynamic;
