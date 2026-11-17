@@ -251,7 +251,7 @@ impl<V: VersionType> VersVersionRange<V> {
     /// type: the typed JSON map form and vers strings carry the scheme as a
     /// plain string, so the pair can drift apart (e.g. an `AllVersion`-typed
     /// range labelled `"npm"`). Version types that do not declare their
-    /// schemes via [`NativeVersionConverter::type`] are not
+    /// schemes via [`NativeVersionConverter::versioning_schemes`] are not
     /// checked.
     fn validate_versioning_scheme(scheme: &str) -> Result<(), VersError>
     where
