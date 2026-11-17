@@ -72,6 +72,15 @@ pub fn parse_native(scheme: &str, raw: &str) -> Result<Ts<DynamicVersionRange>, 
     Ok(range.into_ts()?)
 }
 
+/// Names of all schemes this crate can parse.
+#[wasm_bindgen(unchecked_return_type = "string[]")]
+pub fn supported_schemes() -> js_sys::Array {
+    crate::supported_schemes()
+        .into_iter()
+        .map(JsValue::from_str)
+        .collect()
+}
+
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
     use std::assert_matches;
