@@ -400,6 +400,57 @@ impl<V: VersionType> Display for VersionConstraint<V> {
     }
 }
 
+/// Splits a constraint into its comparator and the version text after it.
+pub(crate) fn split_comparator(constraint: &str) -> Result<(Comparator, &str), VersError> {
+    if constraint == "*" {
+        return Ok((Comparator::Any, ""));
+    }
+    if constraint.starts_with('=') {
+        return Err(VersError::InvalidConstraint(format!(
+            "Explicit equality operator is not allowed; use a bare version without a leading '=': {constraint}"
+        )));
+    }
+    Ok([
+        (">=", Comparator::GreaterThanOrEqual),
+        ("<=", Comparator::LessThanOrEqual),
+        ("!=", Comparator::NotEqual),
+        (">", Comparator::GreaterThan),
+        ("<", Comparator::LessThan),
+    ]
+    .into_iter()
+    .find_map(|(tok, c)| constraint.strip_prefix(tok).map(|rest| (c, rest)))
+    .unwrap_or((Comparator::Equal, constraint)))
+}
+
+/// Scheme-independent syntax check of a constraint list. No version parsing,
+/// so it can run before the scheme is resolved. The "*" must-be-alone rule is
+/// checked later, after versions are parsed.
+pub(crate) fn validate_constraint_syntax(constraints: &str) -> Result<(), VersError> {
+    if constraints.is_empty() {
+        return Err(VersError::EmptyConstraints);
+    }
+    if constraints.matches('*').count() > 1 {
+        return Err(VersError::MultipleAsterisks(constraints.to_string()));
+    }
+
+    for segment in constraints.split('|') {
+        if segment.is_empty() {
+            return Err(VersError::EmptyConstraints);
+        }
+        let (comparator, version) = split_comparator(segment)?;
+        if comparator != Comparator::Any && version.is_empty() {
+            return Err(VersError::MissingVersionInConstraint);
+        }
+        if RESERVED_OPERATOR_TOKENS
+            .iter()
+            .any(|op| version.contains(op))
+        {
+            return Err(VersError::UnencodedOperator(version.to_string()));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod native_version_converter_tests {
     use super::*;
