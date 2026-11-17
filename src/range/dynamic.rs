@@ -1,4 +1,4 @@
-use crate::constraint::{validate_constraint_syntax, NativeVersionConverter};
+use crate::constraint::{NativeVersionConverter, validate_constraint_syntax};
 use crate::range::VersionRange;
 use crate::schemes::{
     all::AllVersion, cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion,

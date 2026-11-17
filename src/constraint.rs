@@ -417,13 +417,14 @@ pub(crate) fn split_comparator(constraint: &str) -> Result<(Comparator, &str), V
         (">", Comparator::GreaterThan),
         ("<", Comparator::LessThan),
     ]
-        .into_iter()
-        .find_map(|(tok, c)| constraint.strip_prefix(tok).map(|rest| (c, rest)))
-        .unwrap_or((Comparator::Equal, constraint)))
+    .into_iter()
+    .find_map(|(tok, c)| constraint.strip_prefix(tok).map(|rest| (c, rest)))
+    .unwrap_or((Comparator::Equal, constraint)))
 }
 
 /// Scheme-independent syntax check of a constraint list. No version parsing,
-/// so it can run before the scheme is resolved.
+/// so it can run before the scheme is resolved. The "*" must-be-alone rule is
+/// checked later, after versions are parsed.
 pub(crate) fn validate_constraint_syntax(constraints: &str) -> Result<(), VersError> {
     if constraints.is_empty() {
         return Err(VersError::EmptyConstraints);
@@ -432,7 +433,6 @@ pub(crate) fn validate_constraint_syntax(constraints: &str) -> Result<(), VersEr
         return Err(VersError::MultipleAsterisks(constraints.to_string()));
     }
 
-    let mut comparators = Vec::new();
     for segment in constraints.split('|') {
         if segment.is_empty() {
             return Err(VersError::EmptyConstraints);
@@ -441,16 +441,12 @@ pub(crate) fn validate_constraint_syntax(constraints: &str) -> Result<(), VersEr
         if comparator != Comparator::Any && version.is_empty() {
             return Err(VersError::MissingVersionInConstraint);
         }
-        if RESERVED_OPERATOR_TOKENS.iter().any(|op| version.contains(op)) {
+        if RESERVED_OPERATOR_TOKENS
+            .iter()
+            .any(|op| version.contains(op))
+        {
             return Err(VersError::UnencodedOperator(version.to_string()));
         }
-        comparators.push(comparator);
-    }
-
-    if comparators.len() > 1 && comparators.contains(&Comparator::Any) {
-        return Err(VersError::InvalidRange(
-            "Star constraint must be used alone".to_string(),
-        ));
     }
     Ok(())
 }
