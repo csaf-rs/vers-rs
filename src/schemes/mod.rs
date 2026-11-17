@@ -1,6 +1,9 @@
 pub mod all;
 pub mod cargo;
+pub mod datetime;
 pub mod deb;
+pub mod generic;
 pub mod intdot;
+pub mod lexicographic;
 pub mod none;
 pub mod semver;
