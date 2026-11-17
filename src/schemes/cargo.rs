@@ -1,4 +1,4 @@
-//! Version constraint type for the Cargo versioning scheme.
+//! Version constraint type for the Cargo type.
 //!
 //! This module contains the `CargoVersion` struct and its implementation of the
 //! `NativeVersionConverter` trait, supporting Cargo dependency specification rules

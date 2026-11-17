@@ -1,6 +1,6 @@
 //! Version type for the generic `intdot` VERS scheme.
 //!
-//! `intdot` is a generic, ecosystem-independent versioning scheme defined by the
+//! `intdot` is a generic, ecosystem-independent type defined by the
 //! [VERS specification](https://github.com/package-url/vers-spec). It covers version
 //! strings that don't follow one of the well-known schemes (semver, deb, ...), but
 //! are still "integers separated by dots", e.g. `10.234.5.12`.
