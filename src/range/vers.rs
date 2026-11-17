@@ -3,10 +3,10 @@
 //! This module contains the `VersionRange` struct and its methods for parsing,
 //! validating, normalizing, and checking version ranges.
 //!
-//! A version range specifier consists of a versioning scheme and a list of version
+//! A version range specifier consists of a type and a list of version
 //! constraints. It defines a set of versions that satisfy the constraints.
 //!
-//! The format is: `vers:<versioning-scheme>/<version-constraint>|<version-constraint>|...`
+//! The format is: `vers:<type>/<constraint>|<constraint>|...`
 //!
 //! Examples:
 //! - `vers:npm/1.2.3` (a single version)
@@ -37,10 +37,10 @@ use std::str::FromStr;
 
 /// A version range specifier.
 ///
-/// A version range specifier consists of a versioning scheme and a list of version constraints.
+/// A version range specifier consists of a type and a list of version constraints.
 /// It defines a set of versions that satisfy the constraints.
 ///
-/// The format is: `vers:<versioning-scheme>/<version-constraint>|<version-constraint>|...`
+/// The format is: `vers:<type>/<constraint>|<constraint>|...`
 ///
 /// Examples:
 /// - `vers:npm/1.2.3` (a single version)
@@ -48,7 +48,7 @@ use std::str::FromStr;
 /// - `vers:pypi/*` (any version)
 ///
 /// When parsed from a string or deserialized from the JSON map form, the
-/// `versioning_scheme` must name one of the schemes the version type `V`
+/// `type` must name one of the schemes the version type `V`
 /// implements (e.g. `SemVer` backs `semver` and `npm`); see
 /// [`NativeVersionConverter::versioning_schemes`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -60,7 +60,7 @@ use std::str::FromStr;
 )]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct VersVersionRange<V: VersionType> {
-    /// The versioning scheme (e.g., "npm", "pypi", "maven", "deb")
+    /// The type (e.g., "npm", "pypi", "maven", "deb")
     pub versioning_scheme: String,
 
     /// The list of version constraints
@@ -94,11 +94,11 @@ impl<V: VersionType + NativeVersionConverter> VersionRange<V> for VersVersionRan
 where
     V::Err: Into<VersError>,
 {
-    /// Get the versioning scheme used by this range.
+    /// Get the type used by this range.
     ///
     /// # Returns
     ///
-    /// The versioning scheme string (e.g., "npm", "semver")
+    /// The type string (e.g., "npm", "semver")
     fn versioning_scheme(&self) -> &str {
         self.versioning_scheme.as_str()
     }
@@ -230,7 +230,7 @@ where
 }
 
 impl<V: VersionType> VersVersionRange<V> {
-    /// Create a new version range with the given versioning scheme and constraints.
+    /// Create a new version range with the given type and constraints.
     ///
     /// # Arguments
     ///
@@ -247,11 +247,11 @@ impl<V: VersionType> VersVersionRange<V> {
         }
     }
 
-    /// Reject a versioning scheme that does not belong to the range's version
+    /// Reject a type that does not belong to the range's version
     /// type: the typed JSON map form and vers strings carry the scheme as a
     /// plain string, so the pair can drift apart (e.g. an `AllVersion`-typed
     /// range labelled `"npm"`). Version types that do not declare their
-    /// schemes via [`NativeVersionConverter::versioning_schemes`] are not
+    /// schemes via [`NativeVersionConverter::type`] are not
     /// checked.
     fn validate_versioning_scheme(scheme: &str) -> Result<(), VersError>
     where
@@ -284,7 +284,7 @@ impl<V: VersionType> VersVersionRange<V> {
     ///
     /// This method first normalizes the version range by sorting and simplifying constraints,
     /// then validates the resulting normalized range according to the rules in the specification.
-    /// It also validates that the `versioning_scheme` names a scheme implemented by the
+    /// It also validates that the `type` names a scheme implemented by the
     /// range's version type.
     ///
     /// # Returns

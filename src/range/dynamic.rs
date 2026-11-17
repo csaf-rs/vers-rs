@@ -35,10 +35,10 @@ enum DynamicVersionRangeInner {
     None(VersVersionRange<NoneVersion>),
 }
 
-/// A dynamic version range that automatically detects the versioning scheme.
+/// A dynamic version range that automatically detects the type.
 ///
 /// This wrapper provides dynamic dispatch for version ranges, automatically
-/// detecting the versioning scheme and constructing the appropriate typed
+/// detecting the type and constructing the appropriate typed
 /// version range internally.
 ///
 /// It currently supports the following schemes:
@@ -118,7 +118,7 @@ macro_rules! dispatch_inner {
 }
 
 impl DynamicVersionRange {
-    /// Parse a native range string for the given versioning scheme into a `DynamicVersionRange`.
+    /// Parse a native range string for the given type into a `DynamicVersionRange`.
     ///
     /// Unlike `FromStr`, this does **not** require the `vers:scheme/` prefix. It accepts
     /// the scheme name and a native range string directly, delegating to the scheme's
@@ -126,7 +126,7 @@ impl DynamicVersionRange {
     ///
     /// # Arguments
     ///
-    /// * `scheme` - The versioning scheme name (e.g. `"deb"`, `"semver"`, `"npm"`)
+    /// * `scheme` - The type name (e.g. `"deb"`, `"semver"`, `"npm"`)
     /// * `raw` - The native range string (e.g. `"<<1.0"`, `">=1.0.0|<2.0.0"`)
     ///
     /// # Returns
@@ -176,7 +176,7 @@ impl DynamicVersionRange {
         })
     }
 
-    /// Extract the versioning scheme from a version range specifier string.
+    /// Extract the type from a version range specifier string.
     ///
     /// This is a helper function used internally to determine which version type
     /// to use when parsing the range.
@@ -204,11 +204,11 @@ impl DynamicVersionRange {
 }
 
 impl VersionRange<String> for DynamicVersionRange {
-    /// Get the versioning scheme used by this range.
+    /// Get the type used by this range.
     ///
     /// # Returns
     ///
-    /// The versioning scheme string (e.g., "npm", "semver")
+    /// The type string (e.g., "npm", "semver")
     ///
     /// # Examples
     ///
@@ -226,7 +226,7 @@ impl VersionRange<String> for DynamicVersionRange {
     /// Check if a version string is contained within this range.
     ///
     /// This method automatically parses the version string using the appropriate
-    /// version type based on the detected versioning scheme.
+    /// version type based on the detected type.
     ///
     /// For the `intdot` scheme, there is no separate canonical form, so the
     /// version string is always parsed leniently (tolerating leading zeros
@@ -307,7 +307,7 @@ impl FromStr for DynamicVersionRange {
 
     /// Parse a version range specifier string into a `DynamicVersionRange`.
     ///
-    /// This function automatically detects the versioning scheme and constructs
+    /// This function automatically detects the type and constructs
     /// the appropriate typed version range.
     ///
     /// # Arguments

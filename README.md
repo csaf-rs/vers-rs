@@ -31,7 +31,7 @@ assert!(dynamic_range.contains("1.5.0".to_string()).unwrap());
 assert!(!dynamic_range.contains("2.0.0".to_string()).unwrap());
 ```
 
-## Supported versioning schemes
+## Supported types
 
 - Semver
 - NPM
@@ -64,15 +64,15 @@ browser.
 
 ## Features
 
-- Parse version range specifiers in the format `vers:<versioning-scheme>/<version-constraint>|<version-constraint>|...`
+- Parse version range specifiers in the format `vers:<type>/<constraint>|<constraint>|...`
 - Validate version range specifiers according to the rules in the specification
 - Check if a version is within a specified range
-- Support for different versioning schemes
+- Support for different types
 - Dynamic dispatch wrapper that automatically detects version schemes
 
 ## TODO: Future Improvements
 
-- **Version Comparison**: Implement proper version comparison for different versioning schemes:
+- **Version Comparison**: Implement proper version comparison for different types:
   - PEP440 for Python/PyPI
   - Maven versioning rules
   - RubyGems versioning rules
@@ -83,7 +83,7 @@ browser.
   - Optimize for better performance
 
 - **Validation**: Enhance validation:
-  - Validate version formats for different versioning schemes
+  - Validate version formats for different types
   - Add more detailed error messages
   - Make sort order validation a hard requirement
 

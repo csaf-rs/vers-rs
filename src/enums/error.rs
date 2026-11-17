@@ -22,7 +22,7 @@ pub enum VersError {
     #[error("Invalid URI scheme, expected 'vers'")]
     InvalidScheme,
 
-    /// The string has no versioning scheme.
+    /// The string has no type.
     #[error("Missing versioning scheme")]
     MissingVersioningScheme,
 
@@ -42,15 +42,15 @@ pub enum VersError {
     #[error("Invalid version range: {0}")]
     InvalidRange(String),
 
-    /// Different versioning schemes cannot be compared with each other.
+    /// Different types cannot be compared with each other.
     #[error("Incompatible versioning schemes: {0} and {1}")]
     IncompatibleVersioningSchemes(String, String),
 
-    /// The versioning scheme is not one of the schemes defined by the VERS specification (see [`crate::VersioningScheme`]).
+    /// The type is not one of the schemes defined by the VERS specification (see [`crate::VersioningScheme`]).
     #[error("Unknown versioning scheme: {0}")]
     UnknownVersioningScheme(String),
 
-    /// The versioning scheme is defined by VERS but not (yet) implemented by this library.
+    /// The type is defined by VERS but not (yet) implemented by this library.
     #[error("Unsupported versioning scheme: {0}")]
     UnsupportedVersioningScheme(String),
 
