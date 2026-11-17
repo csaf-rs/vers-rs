@@ -23,16 +23,41 @@ pub mod wasm;
 /// The comparison is case-sensitive, matching the canonical scheme names
 /// represented by [`VersioningScheme`].
 ///
+/// This is independent of implementation status: a registered type may be
+/// unsupported, and a supported type may be unregistered.
+///
 /// # Examples
 ///
 /// ```
 /// use vers_rs::is_registered_scheme;
 ///
 /// assert!(is_registered_scheme("npm"));
+/// assert!(is_registered_scheme("pypi"));
+/// assert!(!is_registered_scheme("semver"));
 /// assert!(!is_registered_scheme("not-a-scheme"));
 /// ```
 pub fn is_registered_scheme(scheme: &str) -> bool {
-    scheme.parse::<VersioningScheme>().is_ok()
+    scheme
+        .parse::<VersioningScheme>()
+        .is_ok_and(VersioningScheme::is_registered)
+}
+
+/// Check if a string is a scheme this crate can parse.
+///
+/// # Examples
+///
+/// ```
+/// use vers_rs::is_supported_scheme;
+///
+/// assert!(is_supported_scheme("semver"));
+/// assert!(is_supported_scheme("npm"));
+/// assert!(!is_supported_scheme("pypi"));
+/// assert!(!is_supported_scheme("not-a-scheme"));
+/// ```
+pub fn is_supported_scheme(scheme: &str) -> bool {
+    scheme
+        .parse::<VersioningScheme>()
+        .is_ok_and(VersioningScheme::is_supported)
 }
 
 /// Parse a version range specifier string into a `DynamicVersionRange`.

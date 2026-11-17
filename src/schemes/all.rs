@@ -110,8 +110,6 @@ impl FromStr for AllVersion {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
-
     use super::*;
 
     const INVALID_RANGE_ERROR_SUFFIX: &str = "the all scheme only accepts a single '*' constraint";
@@ -119,10 +117,10 @@ mod tests {
     #[test]
     fn only_wildcard_is_valid() {
         assert!(AllVersion::from_str("*").is_ok());
-        assert_matches!(
+        assert!(matches!(
             AllVersion::from_str("1.0.0"),
             Err(VersError::InvalidVersionFormat(_, _, _))
-        );
+        ));
     }
 
     #[test]
@@ -130,10 +128,10 @@ mod tests {
         let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
             r#"{"versioning_scheme":"all","constraints":[]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains(&VersError::EmptyConstraints.to_string())
-        );
+        ));
     }
 
     #[test]
@@ -141,10 +139,10 @@ mod tests {
         let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
             r#"{"versioning_scheme":"all","constraints":[{"comparator":"Any","version":"*"},{"comparator":"Any","version":"*"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains(INVALID_RANGE_ERROR_SUFFIX)
-        );
+        ));
     }
 
     #[test]
@@ -181,10 +179,10 @@ mod tests {
         let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
             r#"{"versioning_scheme":"npm","constraints":[{"comparator":"Any","version":"*"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains("expected one of: all")
-        );
+        ));
     }
 
     // `vers:all/*` is the only canonical form: the payload-less wildcard
@@ -194,10 +192,10 @@ mod tests {
         let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
             r#"{"versioning_scheme":"all","constraints":[{"comparator":"LessThan","version":"*"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains("the all scheme only accepts a single '*' constraint")
-        );
+        ));
     }
 }
 
