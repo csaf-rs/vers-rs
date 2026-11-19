@@ -13,19 +13,13 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Prepare targets
-        run: |
-          rustup target add wasm32-unknown-unknown
-          rustup target add x86_64-unknown-linux-gnu
-      - name: Install wasm-pack
-        run: cargo install wasm-pack --locked
-      - name: Build wasm package
-        run: wasm-pack build --release --scope csaf-rs --out-dir pkg --features wasm
       - name: Set up Node
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           registry-url: "https://registry.npmjs.org"
+      - name: Build npm package
+        uses: csaf-rs/shared-workflows/.github/actions/wasm-npm-package@fa264d0e39f0427b66a04fd587c664adad909334
       - name: Publish pkg to npm with provenance
         working-directory: pkg
         run: |
