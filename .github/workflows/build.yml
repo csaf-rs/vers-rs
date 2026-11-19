@@ -36,11 +36,8 @@ jobs:
         run: cargo install wasm-pack --locked
       - name: Run wasm-pack tests
         run: wasm-pack test --node --features wasm
-      - name: Build wasm package and npm dry-run
-        run: |
-          wasm-pack build --out-dir pkg --scope csaf-rs --features wasm
-          cd pkg
-          npm pack --dry-run
+      - name: Build npm package
+        uses: csaf-rs/shared-workflows/.github/actions/wasm-npm-package@fa264d0e39f0427b66a04fd587c664adad909334
 
   coverage:
     uses: csaf-rs/shared-workflows/.github/workflows/rust-coverage.yml@c2f5f2066f1d96c12c1e33a8dea1fceb5eb37366 # v1.12.0
