@@ -61,6 +61,10 @@ impl NativeVersionConverter for PypiVersion {
         VersioningScheme::Pypi.as_ref()
     }
 
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        Some(&[VersioningScheme::Pypi])
+    }
+
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
             return Err(VersError::InvalidConstraint(
