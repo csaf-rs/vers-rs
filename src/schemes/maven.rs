@@ -49,6 +49,10 @@ impl NativeVersionConverter for MavenVersion {
         VersioningScheme::Maven.as_ref()
     }
 
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        Some(&[VersioningScheme::Maven])
+    }
+
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
             return Err(VersError::InvalidConstraint(
