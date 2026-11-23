@@ -74,7 +74,7 @@ pub fn parse_native(scheme: &str, raw: &str) -> Result<Ts<DynamicVersionRange>, 
 
 /// Names of all schemes this crate can parse.
 #[wasm_bindgen(unchecked_return_type = "string[]")]
-pub fn supported_schemes() -> js_sys::Array {
+pub fn supported_schemes() -> Ts<Vec<String>> {
     crate::supported_schemes()
         .into_iter()
         .map(JsValue::from_str)
