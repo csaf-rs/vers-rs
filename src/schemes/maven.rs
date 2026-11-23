@@ -308,10 +308,7 @@ fn parse_single_maven_interval(
         && low == high
     {
         if first_char == Some('[') && last_char == Some(']') {
-            return Ok(vec![VersionConstraint::new(
-                Comparator::Equal,
-                low.clone(),
-            )]);
+            return Ok(vec![VersionConstraint::new(Comparator::Equal, low.clone())]);
         }
         return Err(VersError::InvalidConstraint(format!(
             "Empty Maven interval with equal bounds: '{}'",
