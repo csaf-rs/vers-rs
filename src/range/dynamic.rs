@@ -1,5 +1,6 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
+use crate::schemes::pypi::PypiVersion;
 use crate::schemes::{
     all::AllVersion, cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion,
     none::NoneVersion, semver::SemVer,
@@ -27,6 +28,8 @@ enum DynamicVersionRangeInner {
     Deb(VersVersionRange<DebVersion>),
     /// Cargo-based range ("cargo" scheme)
     Cargo(VersVersionRange<CargoVersion>),
+    /// Pypi-based range ("pypi" scheme)
+    Pypi(VersVersionRange<PypiVersion>),
     /// Generic dot-separated-integers range ("intdot" scheme)
     IntDot(VersVersionRange<IntDotVersion>),
     /// Universal range ("all" scheme)
@@ -74,7 +77,7 @@ enum DynamicVersionRangeInner {
 #[cfg_attr(
     feature = "wasm",
     tsify(
-        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion> | VersVersionRange<AllVersion> | VersVersionRange<NoneVersion>"
+        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<PypiVersion> | VersVersionRange<IntDotVersion> | VersVersionRange<AllVersion> | VersVersionRange<NoneVersion>"
     )
 )]
 pub struct DynamicVersionRange {
@@ -110,6 +113,7 @@ macro_rules! dispatch_inner {
             DynamicVersionRangeInner::SemVer($range) => $expr,
             DynamicVersionRangeInner::Deb($range) => $expr,
             DynamicVersionRangeInner::Cargo($range) => $expr,
+            DynamicVersionRangeInner::Pypi($range) => $expr,
             DynamicVersionRangeInner::IntDot($range) => $expr,
             DynamicVersionRangeInner::All($range) => $expr,
             DynamicVersionRangeInner::None($range) => $expr,
@@ -156,6 +160,9 @@ impl DynamicVersionRange {
             }
             VersioningScheme::Cargo => {
                 DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
+            }
+            VersioningScheme::Pypi => {
+                DynamicVersionRangeInner::Pypi(PypiVersion::from_native_string(scheme, raw)?)
             }
             VersioningScheme::Intdot => {
                 DynamicVersionRangeInner::IntDot(IntDotVersion::from_native_string(scheme, raw)?)
@@ -264,6 +271,9 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::Cargo(range) => {
                 range.contains(version_str.parse::<CargoVersion>()?)
             }
+            DynamicVersionRangeInner::Pypi(range) => {
+                range.contains(PypiVersion::from_str_or_arbitrary(&version_str)?)
+            }
             DynamicVersionRangeInner::IntDot(range) => {
                 range.contains(version_str.parse::<IntDotVersion>()?)
             }
@@ -354,6 +364,7 @@ impl FromStr for DynamicVersionRange {
             }
             VersioningScheme::Deb => DynamicVersionRangeInner::Deb(s.parse()?),
             VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(s.parse()?),
+            VersioningScheme::Pypi => DynamicVersionRangeInner::Pypi(s.parse()?),
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(s.parse()?),
             VersioningScheme::All => DynamicVersionRangeInner::All(s.parse()?),
             VersioningScheme::None => DynamicVersionRangeInner::None(s.parse()?),
@@ -417,6 +428,9 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            VersioningScheme::Pypi => DynamicVersionRangeInner::Pypi(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(
@@ -691,14 +705,10 @@ mod tests {
     }
 
     #[test]
-    fn test_dynamic_parse_unsupported() {
-        // "pypi" is a valid VERS scheme per the spec, but not yet implemented.
+    fn test_dynamic_parse_supported() {
+        // "pypi" is a valid VERS scheme per the spec.
         let range: Result<DynamicVersionRange, VersError> = "vers:pypi/>=1.0.0|<2.0.0".parse();
-        assert!(range.is_err());
-        assert!(matches!(
-            range.unwrap_err(),
-            VersError::UnsupportedVersioningScheme(_)
-        ));
+        assert!(range.is_ok());
     }
 
     #[rstest]
@@ -757,10 +767,7 @@ mod tests {
     #[test]
     fn test_parse_native_unsupported_scheme() {
         let result = DynamicVersionRange::parse_native("pypi", ">=1.0.0");
-        assert!(matches!(
-            result,
-            Err(VersError::UnsupportedVersioningScheme(_))
-        ));
+        assert!(matches!(result.is_ok(), true));
     }
 
     #[test]

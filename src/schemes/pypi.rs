@@ -26,6 +26,19 @@ impl PypiVersion {
             raw: raw.to_string(),
         }
     }
+
+    pub(crate) fn from_str_or_arbitrary(s: &str) -> Result<Self, VersError> {
+        let trimmed = s.trim();
+        if trimmed.is_empty() {
+            return Err(VersError::InvalidConstraint(
+                "Empty version string".to_string(),
+            ));
+        }
+        match Self::from_str(trimmed) {
+            Ok(v) => Ok(v),
+            Err(_) => Ok(Self::from_arbitrary(trimmed)),
+        }
+    }
 }
 
 impl Default for PypiVersion {
@@ -52,7 +65,7 @@ impl<'de> Deserialize<'de> for PypiVersion {
         D: Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
-        s.parse().map_err(serde::de::Error::custom)
+        PypiVersion::from_str_or_arbitrary(&s).map_err(serde::de::Error::custom)
     }
 }
 
@@ -180,20 +193,21 @@ impl FromStr for PypiVersion {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let s = s.trim();
-        let original_raw = s.to_string();
-
-        let inner = PypiVersionInner::from_str(s).map_err(|e| {
-            VersError::InvalidVersionFormat(
+        if s.is_empty() {
+            return Err(VersError::InvalidVersionFormat(
                 Self::scheme_name().to_string(),
                 s.to_string(),
-                e.to_string(),
-            )
-        })?;
+                "Empty version string".to_string(),
+            ));
+        }
 
-        Ok(PypiVersion {
-            inner: Some(inner),
-            raw: original_raw,
-        })
+        match PypiVersionInner::from_str(s) {
+            Ok(inner) => Ok(PypiVersion {
+                inner: Some(inner),
+                raw: s.to_string(),
+            }),
+            Err(_) => Ok(Self::from_arbitrary(s)),
+        }
     }
 }
 

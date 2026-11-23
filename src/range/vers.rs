@@ -669,6 +669,7 @@ impl<V: VersionType> Display for VersVersionRange<V> {
 mod tests {
     use super::VersVersionRange;
     use crate::Comparator;
+    use crate::DynamicVersionRange;
     use crate::VersError;
     use crate::VersionConstraint;
     use crate::constraint::NativeVersionConverter;
@@ -1036,5 +1037,22 @@ mod tests {
         let local_upper = PypiVersion::from_str("1.0.0+BUILD.2").unwrap();
         let local_lower = PypiVersion::from_str("1.0.0+build.2").unwrap();
         assert_eq!(local_upper.cmp(&local_lower), Ordering::Equal);
+    }
+
+    #[test]
+    fn test_pypi_arbitrary_version_roundtrip() {
+        let range = DynamicVersionRange::parse_native("pypi", "===v1.0-custom").unwrap();
+
+        // JSON serde round-trip
+        let json = serde_json::to_string(&range).unwrap();
+        let from_json: DynamicVersionRange = serde_json::from_str(&json).unwrap();
+        assert_eq!(range, from_json);
+        assert!(from_json.contains("v1.0-custom".to_string()).unwrap());
+
+        // VERS string format + reparse round-trip
+        let vers_str = range.to_string();
+        let from_vers: DynamicVersionRange = vers_str.parse().unwrap();
+        assert_eq!(range, from_vers);
+        assert!(from_vers.contains("v1.0-custom".to_string()).unwrap());
     }
 }
