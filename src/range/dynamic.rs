@@ -767,7 +767,7 @@ mod tests {
     #[test]
     fn test_parse_native_unsupported_scheme() {
         let result = DynamicVersionRange::parse_native("pypi", ">=1.0.0");
-        assert!(matches!(result.is_ok(), true));
+        assert!(result.is_ok());
     }
 
     #[test]
