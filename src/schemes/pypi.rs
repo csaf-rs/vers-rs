@@ -233,7 +233,9 @@ impl Ord for PypiVersion {
     fn cmp(&self, other: &Self) -> Ordering {
         match (&self.inner, &other.inner) {
             (Some(a), Some(b)) => a.cmp(b),
-            _ => self.raw.cmp(&other.raw),
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => self.raw.cmp(&other.raw),
         }
     }
 }
