@@ -72,21 +72,19 @@ pub fn parse_native(scheme: &str, raw: &str) -> Result<Ts<DynamicVersionRange>, 
     let range = DynamicVersionRange::parse_native(scheme, raw)?;
     Ok(range.into_ts()?)
 }
-
 #[derive(Debug, Clone, Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
 pub struct SupportedSchemes(pub Vec<String>);
 
 /// Names of all schemes this crate can parse.
-#[wasm_bindgen(unchecked_return_type = "string[]")]
+#[wasm_bindgen]
 pub fn supported_schemes() -> Ts<SupportedSchemes> {
-    SupportedSchemes(
+    let schemes = SupportedSchemes(
         crate::supported_schemes()
             .into_iter()
-            .map(JsValue::from_str)
+            .map(str::to_owned)
             .collect(),
-    )
-    .into()
+    );
+    Ts::from_value(schemes)
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]
