@@ -262,14 +262,15 @@ fn parse_single_maven_interval(
         return Ok(vec![VersionConstraint::new(Comparator::Equal, version)]);
     }
 
-    if raw.len() < 2 {
+if raw.len() < 2
+        || !matches!(raw.chars().next(), Some('[' | '('))
+        || !matches!(raw.chars().last(), Some(']' | ')'))
+    {
         return Err(VersError::InvalidConstraint(format!(
             "Invalid Maven interval format: '{}'",
             raw
         )));
     }
-
-    let inner_content = &raw[1..raw.len() - 1];
     let parts: Vec<&str> = inner_content.split(',').map(|s| s.trim()).collect();
 
     let mut constraints = Vec::new();
