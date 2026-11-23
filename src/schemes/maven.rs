@@ -147,7 +147,9 @@ impl Display for MavenVersion {
 
 impl Hash for MavenVersion {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.raw.hash(state);
+        ComparableVersion::from_str(&self.raw)
+            .expect("MavenVersion stores only parsed versions")
+            .hash(state);
     }
 }
 
