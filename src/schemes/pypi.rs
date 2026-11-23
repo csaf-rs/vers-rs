@@ -278,7 +278,6 @@ fn calculate_pypi_wildcard_upper_bound(v: &str) -> String {
             format!("{}!{}", version.epoch(), next)
         };
     }
-    release.pop();
     let Some(last) = release.pop() else {
         return format!("{}.0", v);
     };

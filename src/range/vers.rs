@@ -1007,7 +1007,7 @@ mod tests {
         assert_eq!(range_wildcard[0].comparator, Comparator::GreaterThanOrEqual);
         assert_eq!(range_wildcard[0].version.to_string(), "1.4.0");
         assert_eq!(range_wildcard[1].comparator, Comparator::LessThan);
-        assert_eq!(range_wildcard[1].version.to_string(), "2");
+        assert_eq!(range_wildcard[1].version.to_string(), "1.5");
 
         // Arbitrary equality (===)
         let arb = PypiVersion::from_native_constraint("===v1.0-custom").unwrap();
