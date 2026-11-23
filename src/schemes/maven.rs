@@ -262,7 +262,7 @@ fn parse_single_maven_interval(
         return Ok(vec![VersionConstraint::new(Comparator::Equal, version)]);
     }
 
-if raw.len() < 2
+    if raw.len() < 2
         || !matches!(raw.chars().next(), Some('[' | '('))
         || !matches!(raw.chars().last(), Some(']' | ')'))
     {
@@ -271,32 +271,46 @@ if raw.len() < 2
             raw
         )));
     }
-    let parts: Vec<&str> = inner_content.split(',').map(|s| s.trim()).collect();
+    let parts: Vec<&str> = raw.split(',').map(|s| s.trim()).collect();
+    let first_char = raw.chars().next();
+    let last_char = raw.chars().last();
+    let lower_str = parts
+        .first()
+        .map(|s| s.trim().trim_start_matches(['[', '(']).trim())
+        .unwrap_or("");
+    let upper_str = parts
+        .get(1)
+        .map(|s| s.trim().trim_end_matches([']', ')']).trim())
+        .unwrap_or("");
 
     let mut constraints = Vec::new();
-    if let Some(lower) = parts.first()
-        && !lower.is_empty()
-    {
-        let inclusive = raw.starts_with('[');
-        let comp = if parts.len() == 1 && inclusive && raw.ends_with(']') {
+
+    if !lower_str.is_empty() {
+        let inclusive = first_char == Some('[');
+        let comp = if parts.len() == 1 && inclusive && last_char == Some(']') {
             Comparator::Equal
         } else if inclusive {
             Comparator::GreaterThanOrEqual
         } else {
             Comparator::GreaterThan
         };
-        constraints.push(VersionConstraint::new(comp, MavenVersion::from_str(lower)?));
+        constraints.push(VersionConstraint::new(
+            comp,
+            MavenVersion::from_str(lower_str)?,
+        ));
     }
-    if let Some(upper) = parts.get(1)
-        && !upper.is_empty()
-    {
-        let inclusive = raw.ends_with(']');
+
+    if !upper_str.is_empty() {
+        let inclusive = last_char == Some(']');
         let comp = if inclusive {
             Comparator::LessThanOrEqual
         } else {
             Comparator::LessThan
         };
-        constraints.push(VersionConstraint::new(comp, MavenVersion::from_str(upper)?));
+        constraints.push(VersionConstraint::new(
+            comp,
+            MavenVersion::from_str(upper_str)?,
+        ));
     }
 
     if constraints.is_empty() {
