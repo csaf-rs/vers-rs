@@ -6,10 +6,10 @@
 //! since `#[tsify(into_wasm_abi, from_wasm_abi)]` can leak memory when
 //! (de)serialization fails, whereas `Ts<T>` handles that failure gracefully.
 
-use serde::Serialize;
 use crate::VersError;
 use crate::range::VersionRange;
 use crate::range::dynamic::DynamicVersionRange;
+use serde::Serialize;
 use tsify::Ts;
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
