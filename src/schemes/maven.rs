@@ -264,55 +264,79 @@ fn parse_single_maven_interval(
         return Ok(vec![VersionConstraint::new(Comparator::Equal, version)]);
     }
 
+    let first_char = raw.chars().next();
+    let last_char = raw.chars().last();
     if raw.len() < 2
-        || !matches!(raw.chars().next(), Some('[' | '('))
-        || !matches!(raw.chars().last(), Some(']' | ')'))
+        || !matches!(first_char, Some('[' | '('))
+        || !matches!(last_char, Some(']' | ')'))
     {
         return Err(VersError::InvalidConstraint(format!(
             "Invalid Maven interval format: '{}'",
             raw
         )));
     }
-    let parts: Vec<&str> = raw.split(',').map(|s| s.trim()).collect();
-    let first_char = raw.chars().next();
-    let last_char = raw.chars().last();
+
+    let parts: Vec<&str> = raw.split(',').map(str::trim).collect();
+    if parts.len() > 2 {
+        return Err(VersError::InvalidConstraint(format!(
+            "Invalid Maven interval format: '{}'",
+            raw
+        )));
+    }
+
     let lower_str = parts
         .first()
-        .map(|s| s.trim().trim_start_matches(['[', '(']).trim())
+        .map(|s| s.trim_start_matches(['[', '(']).trim())
         .unwrap_or("");
     let upper_str = parts
         .get(1)
-        .map(|s| s.trim().trim_end_matches([']', ')']).trim())
+        .map(|s| s.trim_end_matches([']', ')']).trim())
         .unwrap_or("");
+
+    let lower_ver = if lower_str.is_empty() {
+        None
+    } else {
+        Some(MavenVersion::from_str(lower_str)?)
+    };
+    let upper_ver = if upper_str.is_empty() {
+        None
+    } else {
+        Some(MavenVersion::from_str(upper_str)?)
+    };
+
+    if let (Some(low), Some(high)) = (&lower_ver, &upper_ver)
+        && low == high
+    {
+        if first_char == Some('[') && last_char == Some(']') {
+            return Ok(vec![VersionConstraint::new(
+                Comparator::Equal,
+                low.clone(),
+            )]);
+        }
+        return Err(VersError::InvalidConstraint(format!(
+            "Empty Maven interval with equal bounds: '{}'",
+            raw
+        )));
+    }
 
     let mut constraints = Vec::new();
 
-    if !lower_str.is_empty() {
-        let inclusive = first_char == Some('[');
-        let comp = if parts.len() == 1 && inclusive && last_char == Some(']') {
-            Comparator::Equal
-        } else if inclusive {
+    if let Some(low) = lower_ver {
+        let comp = if first_char == Some('[') {
             Comparator::GreaterThanOrEqual
         } else {
             Comparator::GreaterThan
         };
-        constraints.push(VersionConstraint::new(
-            comp,
-            MavenVersion::from_str(lower_str)?,
-        ));
+        constraints.push(VersionConstraint::new(comp, low));
     }
 
-    if !upper_str.is_empty() {
-        let inclusive = last_char == Some(']');
-        let comp = if inclusive {
+    if let Some(high) = upper_ver {
+        let comp = if last_char == Some(']') {
             Comparator::LessThanOrEqual
         } else {
             Comparator::LessThan
         };
-        constraints.push(VersionConstraint::new(
-            comp,
-            MavenVersion::from_str(upper_str)?,
-        ));
+        constraints.push(VersionConstraint::new(comp, high));
     }
 
     if constraints.is_empty() {
@@ -401,5 +425,24 @@ mod tests {
     fn test_maven_empty_constraints_error() {
         let res = MavenVersion::from_native("   ");
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_maven_empty_union_member_rejected() {
+        assert!(parse_maven_unions("[1.0.0,2.0.0],").is_err());
+        assert!(parse_maven_unions(",[1.0.0,2.0.0]").is_err());
+        assert!(parse_maven_unions("[1.0.0],,[2.0.0]").is_err());
+    }
+
+    #[test]
+    fn test_maven_equal_bounds_collapsed_or_rejected() {
+        let constraints = parse_single_maven_interval("[1.0.0,1.0.0]").unwrap();
+        assert_eq!(constraints.len(), 1);
+        assert_eq!(constraints[0].comparator, Comparator::Equal);
+        assert_eq!(constraints[0].version.to_string(), "1.0.0");
+
+        assert!(parse_single_maven_interval("[1.0.0,1.0.0)").is_err());
+        assert!(parse_single_maven_interval("(1.0.0,1.0.0]").is_err());
+        assert!(parse_single_maven_interval("(1.0.0,1.0.0)").is_err());
     }
 }
