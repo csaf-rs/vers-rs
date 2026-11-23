@@ -55,8 +55,8 @@ impl VersioningScheme {
     pub const REGISTERED: &'static [VersioningScheme] =
         &[VersioningScheme::Npm, VersioningScheme::Pypi];
 
-    /// Schemes with a working implementation in this crate not
-    /// listed in REGISTERED.
+    /// Schemes with a working VERS range implementation in this crate,
+    /// regardless of whether they are listed in [`Self::REGISTERED`].
     pub const SUPPORTED: &'static [VersioningScheme] = &[
         VersioningScheme::Semver,
         VersioningScheme::Deb,
