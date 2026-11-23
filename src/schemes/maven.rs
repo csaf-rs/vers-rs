@@ -199,7 +199,9 @@ pub fn parse_maven_unions(raw: &str) -> Result<Vec<VersionConstraint<MavenVersio
     for interval_str in intervals {
         let interval_str = interval_str.trim();
         if interval_str.is_empty() {
-            continue;
+            return Err(VersError::InvalidConstraint(
+                "Empty Maven interval".to_string(),
+            ));
         }
 
         let constraints = parse_single_maven_interval(interval_str)?;
