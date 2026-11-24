@@ -59,7 +59,7 @@ where
     /// implements.
     ///
     /// Typed [`VersVersionRange`] construction validates that a range's
-    /// `versioning_scheme` names one of these schemes, so the scheme string
+    /// `type` names one of these schemes, so the scheme string
     /// cannot drift away from the version type it is paired with (e.g. an
     /// [`crate::schemes::all::AllVersion`]-typed range labelled `"npm"`).
     ///

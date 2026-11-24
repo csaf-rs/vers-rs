@@ -116,39 +116,37 @@ impl FromStr for NoneVersion {
 
 #[cfg(test)]
 mod tests {
-    use std::assert_matches;
-
     use super::*;
 
     #[test]
     fn only_wildcard_is_valid() {
         assert!(NoneVersion::from_str("*").is_ok());
-        assert_matches!(
+        assert!(matches!(
             NoneVersion::from_str("1.0.0"),
             Err(VersError::InvalidVersionFormat(_, _, _))
-        );
+        ));
     }
 
     #[test]
     fn serde_rejects_empty_range() {
         let result = serde_json::from_str::<crate::VersVersionRange<NoneVersion>>(
-            r#"{"versioning_scheme":"none","constraints":[]}"#,
+            r#"{"type":"none","constraints":[]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains(&VersError::EmptyConstraints.to_string())
-        );
+        ));
     }
 
     #[test]
     fn serde_rejects_multiple_constraints() {
         let result = serde_json::from_str::<crate::VersVersionRange<NoneVersion>>(
-            r#"{"versioning_scheme":"none","constraints":[{"comparator":"Any","version":"*"},{"comparator":"Any","version":"*"}]}"#,
+            r#"{"type":"none","constraints":[{"comparator":"Any","version":"*"},{"comparator":"Any","version":"*"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains(INVALID_RANGE_ERROR)
-        );
+        ));
     }
 
     #[test]
@@ -183,12 +181,12 @@ mod tests {
     #[test]
     fn typed_serde_rejects_scheme_type_mismatch() {
         let result = serde_json::from_str::<crate::VersVersionRange<NoneVersion>>(
-            r#"{"versioning_scheme":"deb","constraints":[{"comparator":"Any","version":"*"}]}"#,
+            r#"{"type":"deb","constraints":[{"comparator":"Any","version":"*"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains("expected one of: none")
-        );
+        ));
     }
 
     // `vers:none/*` is the only canonical form: the payload-less wildcard
@@ -196,12 +194,12 @@ mod tests {
     #[test]
     fn typed_serde_rejects_non_wildcard_comparator() {
         let result = serde_json::from_str::<crate::VersVersionRange<NoneVersion>>(
-            r#"{"versioning_scheme":"none","constraints":[{"comparator":"LessThan","version":"*"}]}"#,
+            r#"{"type":"none","constraints":[{"comparator":"LessThan","version":"*"}]}"#,
         );
-        assert_matches!(
+        assert!(matches!(
             result,
             Err(err) if err.to_string().contains("the none scheme only accepts a single '*' constraint")
-        );
+        ));
     }
 }
 
