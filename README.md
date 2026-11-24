@@ -31,6 +31,24 @@ assert!(dynamic_range.contains("1.5.0".to_string()).unwrap());
 assert!(!dynamic_range.contains("2.0.0".to_string()).unwrap());
 ```
 
+### JavaScript / WASM Usage
+
+Call `init()` once before using the library. In browsers it loads the wasm module; in Node.js it returns immediately, because the module is already loaded on import.
+
+```js
+import init, { parse, contains, parse_native } from "@csaf-rs/vers-rs";
+
+await init();
+
+const range = parse("vers:npm/>=1.0.0|<2.0.0");
+console.log(contains(range, "1.5.0")); // true
+console.log(contains(range, "2.0.0")); // false
+
+// Parse a scheme's native range syntax directly, e.g. Debian's `<<1.0`
+const deb = parse_native("deb", "<<1.0");
+console.log(contains(deb, "0.9")); // true
+```
+
 ## Supported versioning schemes
 
 - Semver
