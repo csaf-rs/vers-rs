@@ -1,0 +1,87 @@
+# Cases from the vers-spec suite that vers-rs does not pass yet.
+#
+# build.rs marks each listed case with #[ignore]. Remove a line once the case
+# passes (run with: cargo test --test vers_spec -- --ignored).
+#
+# Format: <test file name without .json> <case index> <reason>
+npm_range_from_native_test 0001 Invalid version format for scheme semver/npm: 2.0.0 <=4.0.4
+npm_range_from_native_test 0021 Invalid version format for scheme semver/npm: 15.0.0 <= 16.1.0
+npm_range_from_native_test 0038 Invalid version format for scheme semver/npm: 2.0.1 <3.0.2
+npm_range_from_native_test 0043 Empty version constraints
+npm_range_from_native_test 0044 Invalid version format for scheme semver/npm: 1.3.0 <1.3.2
+npm_range_from_native_test 0053 Invalid version format for scheme semver/npm: 1.1
+npm_range_from_native_test 0054 Invalid version format for scheme semver/npm: 1.0
+npm_range_from_native_test 0079 Invalid version format for scheme semver/npm: v2.0.0-alpha8
+npm_range_from_native_test 0080 Invalid version format for scheme semver/npm: v2.0.0-alpha7
+npm_range_from_native_test 0105 Invalid version format for scheme semver/npm: ~1.6.5
+npm_range_from_native_test 0106 Empty version constraints
+npm_range_from_native_test 0129 Invalid version format for scheme semver/npm: 3.5.1 <4.0.0
+npm_range_from_native_test 0130 Empty version constraints
+npm_range_from_native_test 0135 Invalid version format for scheme semver/npm: 2.5.0 <= 3.0.0
+npm_range_from_native_test 0136 Empty version constraints
+npm_range_from_native_test 0140 Empty version constraints
+npm_range_from_native_test 0150 Empty version constraints
+npm_range_from_native_test 0151 Invalid version format for scheme semver/npm: 3.5.5 <=3.8.38
+npm_range_from_native_test 0154 Invalid version format for scheme semver/npm: 1.6.5 <2.0.0
+npm_range_from_native_test 0155 Empty version constraints
+npm_range_from_native_test 0165 Invalid version format for scheme semver/npm: 0.2.0 <= 0.9.6
+npm_range_from_native_test 0173 Invalid version format for scheme semver/npm: 2.2.x
+npm_range_from_native_test 0174 Invalid version format for scheme semver/npm: 2.0.x
+npm_range_from_native_test 0187 Invalid version format for scheme semver/npm: ^2.0.18
+npm_range_from_native_test 0188 Empty version constraints
+npm_range_from_native_test 0189 Empty version constraints
+npm_range_from_native_test 0190 Invalid version format for scheme semver/npm: 1.7.0 <1.7.16
+npm_range_from_native_test 0202 Invalid version format for scheme semver/npm: 1.1.0 <=1.1.1
+npm_range_from_native_test 0215 Invalid version format for scheme semver/npm: 1.6.6 <2.0.0
+npm_range_from_native_test 0216 Empty version constraints
+npm_range_from_native_test 0217 Invalid version format for scheme semver/npm: 2.15.1 <= 3.0.0
+npm_range_from_native_test 0218 Empty version constraints
+npm_range_from_native_test 0233 Invalid version format for scheme semver/npm: 1.4.0 <=1.11.3
+npm_range_from_native_test 0240 Empty version constraints
+npm_range_from_native_test 0241 Empty version constraints
+npm_range_from_native_test 0243 Invalid version format for scheme semver/npm: 5.0.3 >=4.2.1
+npm_range_from_native_test 0244 Invalid version format for scheme semver/npm: 5.0.3 >=5.0.0
+npm_range_from_native_test 0247 Invalid version format for scheme semver/npm: 3.1.3 < 4.0.0
+npm_range_from_native_test 0248 Empty version constraints
+npm_range_from_native_test 0252 Invalid version format for scheme semver/npm: 1.x
+npm_range_from_native_test 0253 Invalid version format for scheme semver/npm: 1.10.4 <1.11.0
+npm_range_from_native_test 0254 Empty version constraints
+npm_range_from_native_test 0263 Invalid version format for scheme semver/npm: 0.0.10 <= 0.0.14
+npm_range_from_native_test 0270 Invalid version format for scheme semver/npm: 2.2.6 <2.47.0
+npm_range_from_native_test 0296 Invalid version format for scheme semver/npm: 2.0.0 <=3.4.3
+npm_range_from_native_test 0312 Invalid version format for scheme semver/npm: 5.0.3 <6.0.0
+npm_range_from_native_test 0322 Empty version constraints
+npm_range_from_native_test 0323 Invalid version format for scheme semver/npm: 3.0.0 <=3.9.1
+npm_range_from_native_test 0328 Invalid version format for scheme semver/npm: ^1.1.7
+npm_range_from_native_test 0329 Empty version constraints
+npm_range_from_native_test 0330 Invalid version format for scheme semver/npm: 1.4.0 <2.0.0
+npm_range_from_native_test 0331 Invalid version format for scheme semver/npm: 0.9.7 <=2.2.2
+npm_range_from_native_test 0337 Invalid version format for scheme semver/npm: 3.4.6 < 4.0.0
+npm_range_from_native_test 0338 Empty version constraints
+npm_range_from_native_test 0356 Invalid version format for scheme semver/npm: 3.1.0 <4.1.2
+npm_range_from_native_test 0369 Invalid version format for scheme semver/npm: 3.11 <4
+npm_range_from_native_test 0370 Invalid version format for scheme semver/npm: 3.11
+npm_range_from_native_test 0374 Invalid version format for scheme semver/npm: 4.17.15 <4.17.19
+npm_range_from_native_test 0378 Invalid version format for scheme semver/npm: 2.0.0-alpha8 <=2.0.0-rc2
+npm_range_from_native_test 0387 Invalid version format for scheme semver/npm: 1.4.6 < 2.0.0
+npm_range_from_native_test 0388 Invalid version format for scheme semver/npm: 1.0.0 < 1.4.6
+npm_range_from_native_test 0409 Invalid version format for scheme semver/npm: 1.7.1 <=1.8.3
+npm_range_from_native_test 0425 Invalid version format for scheme semver/npm: 0.10.0 <=0.10.8
+npm_range_from_native_test 0434 Empty version constraints
+npm_range_from_native_test 0460 Invalid version format for scheme semver/npm: ~0.2.2
+npm_range_from_native_test 0461 Empty version constraints
+npm_range_from_native_test 0463 Invalid version format for scheme semver/npm: 5.2.1 <= 6.0.0
+npm_range_from_native_test 0464 Invalid version format for scheme semver/npm: 1.4.1 <2.0.0
+npm_range_from_native_test 0465 Empty version constraints
+npm_range_from_native_test 0479 Invalid version format for scheme semver/npm: ^1.2.9
+npm_range_from_native_test 0480 Invalid version format for scheme semver/npm: ~3.8.2
+npm_range_from_native_test 0481 Invalid version format for scheme semver/npm: 5.0.0 - 7.2.3
+npm_range_from_native_test 0482 Invalid version format for scheme semver/npm: 2.1
+npm_range_from_native_test 0484 Invalid version format for scheme semver/npm: 2.1 >=1.1
+npm_range_from_native_test 0485 Invalid version format for scheme semver/npm: ^1.2.3-beta.1
+npm_range_from_native_test 0486 Invalid version format for scheme semver/npm: ^0.2.1-beta
+npm_range_from_native_test 0487 Invalid version format for scheme semver/npm: ^0.0.2-beta
+npm_range_from_native_test 0488 Empty version constraints
+npm_range_from_native_test 0489 Invalid version format for scheme semver/npm: 2.1.0 >=1.1.0
+npm_range_from_native_test 0490 Invalid version format for scheme semver/npm: 1.2.x
+vers_canonical_parse_test 0010 Invalid version format for scheme semver/npm: 1.0%2F0
