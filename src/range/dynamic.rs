@@ -1072,4 +1072,53 @@ mod tests {
             )
         );
     }
+
+    #[rstest]
+    #[case::all("vers:all/*")]
+    #[case::none("vers:none/*")]
+    #[case::npm("vers:npm/*")]
+    #[case::semver("vers:semver/*")]
+    #[case::cargo("vers:cargo/*")]
+    #[case::deb("vers:deb/*")]
+    #[case::intdot("vers:intdot/*")]
+    fn test_is_only_wildcard_true_for_single_star(#[case] input: &str) {
+        let range: DynamicVersionRange = input.parse().unwrap();
+        assert!(range.is_only_wildcard());
+    }
+
+    #[rstest]
+    #[case("all", "*")]
+    #[case("none", "*")]
+    fn test_is_only_wildcard_true_for_parse_native_star(#[case] scheme: &str, #[case] raw: &str) {
+        let range = DynamicVersionRange::parse_native(scheme, raw).unwrap();
+        assert!(range.is_only_wildcard());
+    }
+
+    #[rstest]
+    #[case::exact_version("vers:npm/1.2.3")]
+    #[case::gte("vers:semver/>=1.0.0")]
+    #[case::gt("vers:semver/>1.0.0")]
+    #[case::lte("vers:semver/<=1.0.0")]
+    #[case::lt("vers:semver/<1.0.0")]
+    #[case::neq("vers:semver/!=1.0.0")]
+    #[case::bounded_range("vers:npm/>=1.0.0|<2.0.0")]
+    #[case::multi_equal("vers:semver/1.0.0|1.2.0")]
+    #[case::deb_constraint("vers:deb/>=1.0")]
+    #[case::cargo_constraint("vers:cargo/1.2.3")]
+    #[case::intdot_constraint("vers:intdot/1.2.3")]
+    fn test_is_only_wildcard_false_for_non_wildcard_ranges(#[case] input: &str) {
+        let range: DynamicVersionRange = input.parse().unwrap();
+        assert!(!range.is_only_wildcard());
+    }
+
+    #[test]
+    fn test_is_only_wildcard_on_typed_vers_version_range() {
+        let wildcard: crate::VersVersionRange<crate::schemes::semver::SemVer> =
+            "vers:semver/*".parse().unwrap();
+        assert!(wildcard.is_only_wildcard());
+
+        let constrained: crate::VersVersionRange<crate::schemes::semver::SemVer> =
+            "vers:semver/>=1.0.0|<2.0.0".parse().unwrap();
+        assert!(!constrained.is_only_wildcard());
+    }
 }
