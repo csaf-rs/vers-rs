@@ -217,8 +217,8 @@ mod tests {
         let b = DebVersion::from_str("1.0-0").unwrap();
 
         assert_eq!(a, b);
-        assert!(!(a < b));
-        assert!(!(a > b));
+        assert!(a >= b);
+        assert!(a <= b);
     }
 
     #[test]

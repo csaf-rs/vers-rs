@@ -1,4 +1,4 @@
-/// Versioning schemes defined by the VERS specification.
+/// Types defined by the VERS specification.
 ///
 /// The variants that are not currently supported by this crate are included so
 /// callers can distinguish an unknown scheme from a known but unsupported one.

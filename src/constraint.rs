@@ -24,7 +24,7 @@ const RESERVED_OPERATOR_TOKENS: [&str; 5] = [">", "<", "!=", "<=", ">="];
 
 /// Trait for version types that support native (scheme-specific) syntax.
 ///
-/// Some versioning schemes define their own syntax that differs from the standard
+/// Some types define their own syntax that differs from the standard
 /// vers pipe-delimited format. For example:
 /// - Debian defines `>>` (strictly greater) and `<<` (strictly less)
 /// - Future schemes may define interval notation like `[1.0;2.0)` meaning `>=1.0|<2.0`
@@ -59,7 +59,7 @@ where
     /// implements.
     ///
     /// Typed [`VersVersionRange`] construction validates that a range's
-    /// `versioning_scheme` names one of these schemes, so the scheme string
+    /// `type` names one of these schemes, so the scheme string
     /// cannot drift away from the version type it is paired with (e.g. an
     /// [`crate::schemes::all::AllVersion`]-typed range labelled `"npm"`).
     ///
@@ -146,7 +146,7 @@ where
     ///
     /// # Arguments
     ///
-    /// * `scheme` - The versioning scheme name (e.g. `"deb"`, `"semver"`, `"npm"`)
+    /// * `scheme` - The type name (e.g. `"deb"`, `"semver"`, `"npm"`)
     /// * `raw` - The native range string
     fn from_native_string(scheme: &str, raw: &str) -> Result<VersVersionRange<Self>, VersError> {
         let mut range = VersVersionRange::new(scheme.to_string(), Self::from_native(raw)?);

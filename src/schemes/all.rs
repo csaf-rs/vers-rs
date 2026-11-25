@@ -126,7 +126,7 @@ mod tests {
     #[test]
     fn serde_rejects_empty_range() {
         let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
-            r#"{"versioning_scheme":"all","constraints":[]}"#,
+            r#"{"type":"all","constraints":[]}"#,
         );
         assert!(matches!(
             result,
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn serde_rejects_multiple_constraints() {
         let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
-            r#"{"versioning_scheme":"all","constraints":[{"comparator":"Any","version":"*"},{"comparator":"Any","version":"*"}]}"#,
+            r#"{"type":"all","constraints":[{"comparator":"Any","version":"*"},{"comparator":"Any","version":"*"}]}"#,
         );
         assert!(matches!(
             result,
@@ -177,7 +177,7 @@ mod tests {
     #[test]
     fn typed_serde_rejects_scheme_type_mismatch() {
         let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
-            r#"{"versioning_scheme":"npm","constraints":[{"comparator":"Any","version":"*"}]}"#,
+            r#"{"type":"npm","constraints":[{"comparator":"Any","version":"*"}]}"#,
         );
         assert!(matches!(
             result,
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn typed_serde_rejects_non_wildcard_comparator() {
         let result = serde_json::from_str::<crate::VersVersionRange<AllVersion>>(
-            r#"{"versioning_scheme":"all","constraints":[{"comparator":"LessThan","version":"*"}]}"#,
+            r#"{"type":"all","constraints":[{"comparator":"LessThan","version":"*"}]}"#,
         );
         assert!(matches!(
             result,

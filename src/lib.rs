@@ -17,7 +17,7 @@ pub use range::vers::VersVersionRange;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
-/// Check if a string is a known versioning scheme (VERS **type**) as defined
+/// Check if a string is a known type (VERS **type**) as defined
 /// by the [VERS specification](https://github.com/package-url/vers-spec).
 ///
 /// The comparison is case-sensitive, matching the canonical scheme names
@@ -85,7 +85,7 @@ pub fn supported_schemes() -> Vec<&'static str> {
 
 /// Parse a version range specifier string into a `DynamicVersionRange`.
 ///
-/// This function automatically detects the versioning scheme and constructs
+/// This function automatically detects the type and constructs
 /// the appropriate typed version range.
 ///
 /// # Arguments
@@ -194,7 +194,7 @@ pub fn single_version(s: &str) -> Result<Option<String>, VersError> {
     Ok(range.single_version().cloned())
 }
 
-/// Parse a native range string for the given versioning scheme into a `DynamicVersionRange`.
+/// Parse a native range string for the given type into a `DynamicVersionRange`.
 ///
 /// This function accepts a scheme name and a native range string directly, without
 /// requiring the `vers:scheme/` prefix. It delegates to the scheme's
@@ -202,7 +202,7 @@ pub fn single_version(s: &str) -> Result<Option<String>, VersError> {
 ///
 /// # Arguments
 ///
-/// * `scheme` - The versioning scheme name (e.g. `"deb"`, `"semver"`, `"npm"`)
+/// * `scheme` - The type name (e.g. `"deb"`, `"semver"`, `"npm"`)
 /// * `raw` - The native range string (e.g. `"<<1.0"`, `">=1.0.0|<2.0.0"`)
 ///
 /// # Returns

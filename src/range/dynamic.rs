@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 /// Internal enum for the actual version range implementation
 ///
 /// `Deserialize` for this enum is implemented manually below (see the `Deserialize` impl for
-/// `DynamicVersionRange`) rather than derived: a derived `#[serde(tag = "versioning_scheme")]`
+/// `DynamicVersionRange`) rather than derived: a derived `#[serde(tag = "type")]`
 /// (internal tagging) would require serde to buffer the input via `deserialize_any`. That's
 /// fine here since `DynamicVersionRange`'s `Deserialize` impl is explicitly JSON-only (see
 /// its doc comment below), but it's why this can't be a plain derive.
@@ -35,10 +35,10 @@ enum DynamicVersionRangeInner {
     None(VersVersionRange<NoneVersion>),
 }
 
-/// A dynamic version range that automatically detects the versioning scheme.
+/// A dynamic version range that automatically detects the type.
 ///
 /// This wrapper provides dynamic dispatch for version ranges, automatically
-/// detecting the versioning scheme and constructing the appropriate typed
+/// detecting the type and constructing the appropriate typed
 /// version range internally.
 ///
 /// It currently supports the following schemes:
@@ -118,7 +118,7 @@ macro_rules! dispatch_inner {
 }
 
 impl DynamicVersionRange {
-    /// Parse a native range string for the given versioning scheme into a `DynamicVersionRange`.
+    /// Parse a native range string for the given type into a `DynamicVersionRange`.
     ///
     /// Unlike `FromStr`, this does **not** require the `vers:scheme/` prefix. It accepts
     /// the scheme name and a native range string directly, delegating to the scheme's
@@ -126,7 +126,7 @@ impl DynamicVersionRange {
     ///
     /// # Arguments
     ///
-    /// * `scheme` - The versioning scheme name (e.g. `"deb"`, `"semver"`, `"npm"`)
+    /// * `scheme` - The type name (e.g. `"deb"`, `"semver"`, `"npm"`)
     /// * `raw` - The native range string (e.g. `"<<1.0"`, `">=1.0.0|<2.0.0"`)
     ///
     /// # Returns
@@ -176,7 +176,7 @@ impl DynamicVersionRange {
         })
     }
 
-    /// Extract the versioning scheme from a version range specifier string.
+    /// Extract the type from a version range specifier string.
     ///
     /// This is a helper function used internally to determine which version type
     /// to use when parsing the range.
@@ -204,11 +204,11 @@ impl DynamicVersionRange {
 }
 
 impl VersionRange<String> for DynamicVersionRange {
-    /// Get the versioning scheme used by this range.
+    /// Get the type used by this range.
     ///
     /// # Returns
     ///
-    /// The versioning scheme string (e.g., "npm", "semver")
+    /// The type string (e.g., "npm", "semver")
     ///
     /// # Examples
     ///
@@ -226,7 +226,7 @@ impl VersionRange<String> for DynamicVersionRange {
     /// Check if a version string is contained within this range.
     ///
     /// This method automatically parses the version string using the appropriate
-    /// version type based on the detected versioning scheme.
+    /// version type based on the detected type.
     ///
     /// For the `intdot` scheme, there is no separate canonical form, so the
     /// version string is always parsed leniently (tolerating leading zeros
@@ -307,7 +307,7 @@ impl FromStr for DynamicVersionRange {
 
     /// Parse a version range specifier string into a `DynamicVersionRange`.
     ///
-    /// This function automatically detects the versioning scheme and constructs
+    /// This function automatically detects the type and constructs
     /// the appropriate typed version range.
     ///
     /// # Arguments
@@ -385,14 +385,14 @@ impl serde::ser::Serialize for DynamicVersionRange {
 /// Manual `Deserialize` impl, **JSON-only**.
 ///
 /// `DynamicVersionRangeInner`'s natural representation would be an internally tagged enum
-/// (`#[serde(tag = "versioning_scheme")]`), but that fails here: since `VersVersionRange<V>`
-/// (the variants' payload) *also* has its own `versioning_scheme` field, that field is no
+/// (`#[serde(tag = "type")]`), but that fails here: since `VersVersionRange<V>`
+/// (the variants' payload) *also* has its own `type` field, that field is no
 /// longer available once the tag has been consumed, and deserialization fails with "missing
-/// field `versioning_scheme`". This mirrors a known serde limitation (see
+/// field `type`". This mirrors a known serde limitation (see
 /// serde-rs/serde#1560).
 ///
 /// The workaround below buffers the input into a `serde_json::Value` and re-dispatches based
-/// on the `versioning_scheme` field. Building a `serde_json::Value` requires
+/// on the `type` field. Building a `serde_json::Value` requires
 /// `deserialize_any`, which non-self-describing formats (bincode, postcard, ...) do not
 /// support, so this impl only works with self-describing formats and is intended for JSON
 /// specifically; other formats should not rely on it.
@@ -403,12 +403,12 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
     {
         let value = serde_json::Value::deserialize(deserializer)?;
         let scheme = value
-            .get("versioning_scheme")
+            .get("type")
             .and_then(serde_json::Value::as_str)
-            .ok_or_else(|| serde::de::Error::missing_field("versioning_scheme"))?;
-        let scheme_kind = scheme.parse::<VersioningScheme>().map_err(|_| {
-            serde::de::Error::custom(format!("unsupported versioning scheme: {scheme}"))
-        })?;
+            .ok_or_else(|| serde::de::Error::missing_field("type"))?;
+        let scheme_kind = scheme
+            .parse::<VersioningScheme>()
+            .map_err(|_| serde::de::Error::custom(format!("unsupported type: {scheme}")))?;
         let inner = match scheme_kind {
             VersioningScheme::Semver | VersioningScheme::Npm => DynamicVersionRangeInner::SemVer(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
@@ -872,7 +872,7 @@ mod tests {
     #[case("vers:deb/>=*")]
     #[case("vers:all/<=*")]
     #[case("vers:none/!=*")]
-    fn testme(#[case] input: &str) {
+    fn wildcard_with_operator_is_rejected(#[case] input: &str) {
         let range: Result<DynamicVersionRange, VersError> = input.parse();
         assert!(matches!(range, Err(VersError::InvalidConstraint(_))))
     }
@@ -1005,7 +1005,7 @@ mod tests {
     #[test]
     fn test_deserialize_valid_all_none() {
         let json_data = r#"{
-            "versioning_scheme": "all",
+            "type": "all",
             "constraints": [
                 {
                     "comparator": "Any",
@@ -1017,7 +1017,7 @@ mod tests {
         assert_eq!(range.to_string(), r#"vers:all/*"#);
 
         let json_data = r#"{
-            "versioning_scheme": "none",
+            "type": "none",
             "constraints": [
                 {
                     "comparator": "Any",
@@ -1032,23 +1032,19 @@ mod tests {
     // A constraint map without a scheme name is not a valid serialized vers
     // range (the user-facing request shape).
     #[test]
-    fn deserialize_rejects_missing_versioning_scheme() {
+    fn deserialize_rejects_missing_type() {
         let result = serde_json::from_str::<DynamicVersionRange>(
             r#"{"constraints" : [ {"comparator": "LessThan", "version": "*"}]}"#,
         );
         assert!(matches!(
             result,
-            Err(err) if err.to_string().contains("versioning_scheme")
+            Err(err) if err.to_string().contains("type")
         ));
     }
 
     #[rstest]
-    #[case::all(
-        r#"{"versioning_scheme":"all","constraints":[{"comparator":"LessThan","version":"*"}]}"#
-    )]
-    #[case::none(
-        r#"{"versioning_scheme":"none","constraints":[{"comparator":"GreaterThan","version":"*"}]}"#
-    )]
+    #[case::all(r#"{"type":"all","constraints":[{"comparator":"LessThan","version":"*"}]}"#)]
+    #[case::none(r#"{"type":"none","constraints":[{"comparator":"GreaterThan","version":"*"}]}"#)]
     fn deserialize_rejects_noncanonical_all_and_none_ranges(#[case] json: &str) {
         // The precise error contract is pinned at the typed level
         // (`schemes::all` / `schemes::none`); errors are re-wrapped as
