@@ -2,7 +2,7 @@ use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{
     all::AllVersion, cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion,
-    none::NoneVersion, semver::SemVer,
+    maven::MavenVersion, none::NoneVersion, semver::SemVer,
 };
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{VersError, VersVersionRange, VersionConstraint, VersioningScheme};
@@ -27,6 +27,8 @@ enum DynamicVersionRangeInner {
     Deb(VersVersionRange<DebVersion>),
     /// Cargo-based range ("cargo" scheme)
     Cargo(VersVersionRange<CargoVersion>),
+    /// Maven-based range ("maven" scheme)
+    Maven(VersVersionRange<MavenVersion>),
     /// Generic dot-separated-integers range ("intdot" scheme)
     IntDot(VersVersionRange<IntDotVersion>),
     /// Universal range ("all" scheme)
@@ -110,6 +112,7 @@ macro_rules! dispatch_inner {
             DynamicVersionRangeInner::SemVer($range) => $expr,
             DynamicVersionRangeInner::Deb($range) => $expr,
             DynamicVersionRangeInner::Cargo($range) => $expr,
+            DynamicVersionRangeInner::Maven($range) => $expr,
             DynamicVersionRangeInner::IntDot($range) => $expr,
             DynamicVersionRangeInner::All($range) => $expr,
             DynamicVersionRangeInner::None($range) => $expr,
@@ -156,6 +159,9 @@ impl DynamicVersionRange {
             }
             VersioningScheme::Cargo => {
                 DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
+            }
+            VersioningScheme::Maven => {
+                DynamicVersionRangeInner::Maven(MavenVersion::from_native_string(scheme, raw)?)
             }
             VersioningScheme::Intdot => {
                 DynamicVersionRangeInner::IntDot(IntDotVersion::from_native_string(scheme, raw)?)
@@ -264,6 +270,9 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::Cargo(range) => {
                 range.contains(version_str.parse::<CargoVersion>()?)
             }
+            DynamicVersionRangeInner::Maven(range) => {
+                range.contains(version_str.parse::<MavenVersion>()?)
+            }
             DynamicVersionRangeInner::IntDot(range) => {
                 range.contains(version_str.parse::<IntDotVersion>()?)
             }
@@ -355,6 +364,7 @@ impl FromStr for DynamicVersionRange {
             VersioningScheme::Deb => DynamicVersionRangeInner::Deb(s.parse()?),
             VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(s.parse()?),
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(s.parse()?),
+            VersioningScheme::Maven => DynamicVersionRangeInner::Maven(s.parse()?),
             VersioningScheme::All => DynamicVersionRangeInner::All(s.parse()?),
             VersioningScheme::None => DynamicVersionRangeInner::None(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
@@ -420,6 +430,9 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            VersioningScheme::Maven => DynamicVersionRangeInner::Maven(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             VersioningScheme::All => DynamicVersionRangeInner::All(
