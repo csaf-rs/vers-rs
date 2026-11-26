@@ -116,7 +116,6 @@ impl FromStr for NoneVersion {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]

@@ -23,16 +23,64 @@ pub mod wasm;
 /// The comparison is case-sensitive, matching the canonical scheme names
 /// represented by [`VersioningScheme`].
 ///
+/// This is independent of implementation status: a registered type may be
+/// unsupported, and a supported type may be unregistered.
+///
 /// # Examples
 ///
 /// ```
 /// use vers_rs::is_registered_scheme;
 ///
 /// assert!(is_registered_scheme("npm"));
+/// assert!(is_registered_scheme("pypi"));
+/// assert!(!is_registered_scheme("semver"));
 /// assert!(!is_registered_scheme("not-a-scheme"));
 /// ```
 pub fn is_registered_scheme(scheme: &str) -> bool {
-    scheme.parse::<VersioningScheme>().is_ok()
+    scheme
+        .parse::<VersioningScheme>()
+        .is_ok_and(VersioningScheme::is_registered)
+}
+
+/// Check if a string is a scheme this crate can parse.
+///
+/// # Examples
+///
+/// ```
+/// use vers_rs::is_supported_scheme;
+///
+/// assert!(is_supported_scheme("semver"));
+/// assert!(is_supported_scheme("npm"));
+/// assert!(!is_supported_scheme("pypi"));
+/// assert!(!is_supported_scheme("not-a-scheme"));
+/// ```
+pub fn is_supported_scheme(scheme: &str) -> bool {
+    scheme
+        .parse::<VersioningScheme>()
+        .is_ok_and(VersioningScheme::is_supported)
+}
+
+/// Return the names of all schemes this crate can parse.
+///
+/// The names are the canonical scheme strings, in the order of
+/// [`VersioningScheme::SUPPORTED`]. Use this instead of parsing a range and
+/// inspecting the error.
+///
+/// # Examples
+///
+/// ```
+/// use vers_rs::supported_schemes;
+///
+/// let schemes = supported_schemes();
+/// assert!(schemes.contains(&"semver"));
+/// assert!(schemes.contains(&"npm"));
+/// assert!(!schemes.contains(&"pypi"));
+/// ```
+pub fn supported_schemes() -> Vec<&'static str> {
+    VersioningScheme::SUPPORTED
+        .iter()
+        .map(|s| s.as_ref())
+        .collect()
 }
 
 /// Parse a version range specifier string into a `DynamicVersionRange`.
@@ -173,4 +221,33 @@ pub fn single_version(s: &str) -> Result<Option<String>, VersError> {
 /// ```
 pub fn parse_native(scheme: &str, raw: &str) -> Result<DynamicVersionRange, VersError> {
     DynamicVersionRange::parse_native(scheme, raw)
+}
+
+#[cfg(test)]
+mod supported_schemes_tests {
+    use super::*;
+
+    #[test]
+    fn list_matches_is_supported_scheme() {
+        let listed = supported_schemes();
+        assert_eq!(listed.len(), VersioningScheme::SUPPORTED.len());
+        for scheme in &listed {
+            assert!(
+                is_supported_scheme(scheme),
+                "{scheme} listed but not supported"
+            );
+        }
+    }
+
+    #[test]
+    fn every_supported_scheme_parses_without_unsupported_error() {
+        for scheme in supported_schemes() {
+            let input = format!("vers:{scheme}/*");
+            let result: Result<DynamicVersionRange, VersError> = input.parse();
+            assert!(
+                !matches!(result, Err(VersError::UnsupportedVersioningScheme(_))),
+                "{scheme} is listed as supported but is rejected by the parser"
+            );
+        }
+    }
 }

@@ -9,6 +9,7 @@
 use crate::VersError;
 use crate::range::VersionRange;
 use crate::range::dynamic::DynamicVersionRange;
+use serde::Serialize;
 use tsify::Ts;
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
@@ -71,10 +72,23 @@ pub fn parse_native(scheme: &str, raw: &str) -> Result<Ts<DynamicVersionRange>, 
     let range = DynamicVersionRange::parse_native(scheme, raw)?;
     Ok(range.into_ts()?)
 }
+#[derive(Debug, Clone, Serialize, Tsify)]
+pub struct SupportedSchemes(pub Vec<String>);
+
+/// Names of all schemes this crate can parse.
+#[wasm_bindgen]
+pub fn supported_schemes() -> Result<Ts<SupportedSchemes>, VersError> {
+    let schemes = SupportedSchemes(
+        crate::supported_schemes()
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+    );
+    Ok(schemes.into_ts()?)
+}
 
 #[cfg(all(test, target_arch = "wasm32"))]
 mod tests {
-    use std::assert_matches;
 
     use super::*;
     use wasm_bindgen_test::*;
@@ -112,7 +126,10 @@ mod tests {
         let scheme = "semver";
         let raw = "invalid";
         let parse_result = parse_native(scheme, raw);
-        assert_matches!(parse_result, Err(VersError::InvalidVersionFormat(_, _, _)));
+        assert!(matches!(
+            parse_result,
+            Err(VersError::InvalidVersionFormat(_, _, _))
+        ));
     }
 
     #[wasm_bindgen_test]
@@ -130,6 +147,6 @@ mod tests {
         let version_str = "1.2.3";
         let result = contains(invalid_ts, version_str.to_string());
         assert!(result.is_err());
-        assert_matches!(result, Err(VersError::Serialization(_)))
+        assert!(matches!(result, Err(VersError::Serialization(_))))
     }
 }
