@@ -671,13 +671,10 @@ mod tests {
     use crate::Comparator;
     use crate::VersError;
     use crate::VersionConstraint;
-    use crate::constraint::NativeVersionConverter;
     use crate::range::VersionRange;
     use crate::schemes::all::AllVersion;
     use crate::schemes::none::NoneVersion;
-    use crate::schemes::rpm::RpmVersion;
     use crate::schemes::semver::SemVer;
-    use std::str::FromStr;
 
     #[test]
     fn test_invalid_scheme() {
