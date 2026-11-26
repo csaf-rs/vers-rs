@@ -95,6 +95,10 @@ impl NativeVersionConverter for RpmVersion {
         VersioningScheme::Rpm.as_ref()
     }
 
+    fn versioning_schemes() -> Option<&'static [VersioningScheme]> {
+        Some(&[VersioningScheme::Rpm])
+    }
+
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         if raw.bytes().any(|b| b == b'\t' || b == b'\n' || b == b'\r') {
             return Err(VersError::InvalidConstraint(
@@ -109,7 +113,7 @@ impl NativeVersionConverter for RpmVersion {
         let clauses: Vec<&str> = raw
             .split(',')
             .map(|s| s.trim())
-            .filter(|s| !s.is_empty())
+            //.filter(|s| !s.is_empty()) Do not discard empty comma-separated clauses.
             .collect();
 
         if clauses.is_empty() {
@@ -121,7 +125,7 @@ impl NativeVersionConverter for RpmVersion {
             constraints.push(Self::from_native_constraint(clause)?);
         }
 
-        Ok(constraints)
+        intersect_rpm_constraints(constraints)
     }
 
     fn from_native_constraint(raw: &str) -> Result<VersionConstraint<Self>, VersError> {
@@ -183,19 +187,194 @@ impl FromStr for RpmVersion {
         if evr.version().is_empty()
             || (s.contains(':')
                 && (evr.epoch().is_empty() || !evr.epoch().bytes().all(|b| b.is_ascii_digit())))
-            || s.bytes()
-                .any(|b| matches!(b, b'<' | b'>' | b'=' | b'!' | b'*' | b'|'))
+            || !s.is_ascii()
+            || s.bytes().any(|b| {
+                crate::util::ascii_whitespace::is_ascii_vers_whitespace(b)
+                    || matches!(b, b'<' | b'>' | b'=' | b'!' | b'*' | b'|')
+            })
         {
             return Err(VersError::InvalidVersionFormat(
                 Self::scheme_name().to_string(),
                 s.to_string(),
-                "RPM versions require a nonempty version, a numeric epoch when specified, and no embedded constraint operators or wildcards"
+                "RPM versions require a nonempty ASCII version without whitespace, a numeric epoch when specified, and no embedded constraint operators or wildcards"
                     .to_string(),
             ));
         }
 
         Ok(RpmVersion { raw: s.to_string() })
     }
+}
+
+fn intersect_rpm_constraints(
+    constraints: Vec<VersionConstraint<RpmVersion>>,
+) -> Result<Vec<VersionConstraint<RpmVersion>>, VersError> {
+    if constraints.is_empty() {
+        return Err(VersError::EmptyConstraints);
+    }
+
+    if constraints.len() == 1 {
+        return Ok(constraints);
+    }
+
+    let non_any: Vec<VersionConstraint<RpmVersion>> = constraints
+        .into_iter()
+        .filter(|c| c.comparator != Comparator::Any)
+        .collect();
+
+    if non_any.is_empty() {
+        return Ok(vec![VersionConstraint::new(
+            Comparator::Any,
+            RpmVersion::default(),
+        )]);
+    }
+
+    let mut best_lower: Option<VersionConstraint<RpmVersion>> = None;
+    let mut best_upper: Option<VersionConstraint<RpmVersion>> = None;
+    let mut equals: Vec<VersionConstraint<RpmVersion>> = Vec::new();
+    let mut not_equals: Vec<VersionConstraint<RpmVersion>> = Vec::new();
+
+    for c in non_any {
+        match c.comparator {
+            Comparator::GreaterThan | Comparator::GreaterThanOrEqual => {
+                best_lower = Some(match best_lower {
+                    None => c,
+                    Some(prev) => match c.version.cmp(&prev.version) {
+                        Ordering::Greater => c,
+                        Ordering::Less => prev,
+                        Ordering::Equal => {
+                            if c.comparator == Comparator::GreaterThan {
+                                c
+                            } else {
+                                prev
+                            }
+                        }
+                    },
+                });
+            }
+            Comparator::LessThan | Comparator::LessThanOrEqual => {
+                best_upper = Some(match best_upper {
+                    None => c,
+                    Some(prev) => match c.version.cmp(&prev.version) {
+                        Ordering::Less => c,
+                        Ordering::Greater => prev,
+                        Ordering::Equal => {
+                            if c.comparator == Comparator::LessThan {
+                                c
+                            } else {
+                                prev
+                            }
+                        }
+                    },
+                });
+            }
+            Comparator::Equal => {
+                if let Some(existing) = equals.iter().find(|e| e.version == c.version) {
+                    if existing.comparator != c.comparator {
+                        return Err(VersError::InvalidRange(format!(
+                            "Conflicting equality constraints for version '{}'",
+                            c.version
+                        )));
+                    }
+                } else if !equals.is_empty() {
+                    return Err(VersError::InvalidRange(
+                        "Multiple distinct equality constraints cannot all be satisfied"
+                            .to_string(),
+                    ));
+                } else {
+                    equals.push(c);
+                }
+            }
+            Comparator::NotEqual => {
+                if !not_equals.iter().any(|ne| ne.version == c.version) {
+                    not_equals.push(c);
+                }
+            }
+            Comparator::Any => unreachable!(),
+        }
+    }
+
+    // Check lower vs upper bound satisfiability
+    if let (Some(low), Some(high)) = (&best_lower, &best_upper) {
+        match low.version.cmp(&high.version) {
+            Ordering::Greater => {
+                return Err(VersError::InvalidRange(format!(
+                    "Empty RPM constraint intersection: lower bound '{}' exceeds upper bound '{}'",
+                    low.version, high.version
+                )));
+            }
+            Ordering::Equal => {
+                if low.comparator != Comparator::GreaterThanOrEqual
+                    || high.comparator != Comparator::LessThanOrEqual
+                {
+                    return Err(VersError::InvalidRange(format!(
+                        "Empty RPM constraint intersection at version '{}'",
+                        low.version
+                    )));
+                }
+            }
+            Ordering::Less => {}
+        }
+    }
+
+    // Validate equality constraints against bounds and != constraints
+    for eq in &equals {
+        if let Some(low) = &best_lower {
+            match eq.version.cmp(&low.version) {
+                Ordering::Less => {
+                    return Err(VersError::InvalidRange(format!(
+                        "Equality version '{}' is below lower bound '{}'",
+                        eq.version, low.version
+                    )));
+                }
+                Ordering::Equal if low.comparator == Comparator::GreaterThan => {
+                    return Err(VersError::InvalidRange(format!(
+                        "Equality version '{}' excluded by strict lower bound",
+                        eq.version
+                    )));
+                }
+                _ => {}
+            }
+        }
+        if let Some(high) = &best_upper {
+            match eq.version.cmp(&high.version) {
+                Ordering::Greater => {
+                    return Err(VersError::InvalidRange(format!(
+                        "Equality version '{}' is above upper bound '{}'",
+                        eq.version, high.version
+                    )));
+                }
+                Ordering::Equal if high.comparator == Comparator::LessThan => {
+                    return Err(VersError::InvalidRange(format!(
+                        "Equality version '{}' excluded by strict upper bound",
+                        eq.version
+                    )));
+                }
+                _ => {}
+            }
+        }
+        if not_equals.iter().any(|ne| ne.version == eq.version) {
+            return Err(VersError::InvalidRange(format!(
+                "Equality version '{}' conflicts with '!=' constraint",
+                eq.version
+            )));
+        }
+    }
+
+    let mut result = Vec::new();
+    if let Some(low) = best_lower {
+        result.push(low);
+    }
+    if let Some(high) = best_upper {
+        result.push(high);
+    }
+    result.extend(equals);
+    for ne in not_equals {
+        if !result.iter().any(|r| r == &ne) {
+            result.push(ne);
+        }
+    }
+
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -275,6 +454,32 @@ mod tests {
                 .contains(RpmVersion::from_str("0.9.0").unwrap())
                 .unwrap()
         );
+    }
+
+    #[test]
+    fn test_native_intersection_lower_bounds() {
+        let range = RpmVersion::from_native_string("rpm", ">=1.0.0, >=2.0.0").unwrap();
+        assert!(
+            !range
+                .contains(RpmVersion::from_str("1.5.0").unwrap())
+                .unwrap()
+        );
+        assert!(
+            range
+                .contains(RpmVersion::from_str("2.0.0").unwrap())
+                .unwrap()
+        );
+        assert!(
+            range
+                .contains(RpmVersion::from_str("2.5.0").unwrap())
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn test_native_intersection_disjoint_rejected() {
+        let err = RpmVersion::from_native_string("rpm", ">2.0.0, <1.0.0");
+        assert!(err.is_err());
     }
 
     #[test]
