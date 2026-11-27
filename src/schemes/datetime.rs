@@ -53,15 +53,14 @@ impl NativeVersionConverter for DateTimeVersion {
 
     fn from_native(raw: &str) -> Result<Vec<VersionConstraint<Self>>, VersError> {
         validate_raw_text(raw)?;
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
+        if raw.is_empty() {
             return Err(VersError::EmptyConstraints);
         }
 
-        let clauses: Vec<&str> = if trimmed.contains(',') {
-            trimmed.split(',').collect()
+        let clauses: Vec<&str> = if raw.contains(',') {
+            raw.split(',').collect()
         } else {
-            vec![trimmed]
+            vec![raw]
         };
 
         let mut constraints = Vec::new();
@@ -105,20 +104,19 @@ impl NativeVersionConverter for DateTimeVersion {
 impl FromStr for DateTimeVersion {
     type Err = VersError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        validate_raw_text(s)?;
-        let trimmed = s.trim();
-        let timestamp = Timestamp::from_str(trimmed).map_err(|e| {
+    fn from_str(raw: &str) -> Result<Self, Self::Err> {
+        validate_raw_text(raw)?;
+        let timestamp = Timestamp::from_str(raw).map_err(|e| {
             VersError::InvalidVersionFormat(
                 Self::scheme_name().to_string(),
-                s.to_string(),
+                raw.to_string(),
                 e.to_string(),
             )
         })?;
 
         Ok(DateTimeVersion {
             timestamp,
-            raw: trimmed.to_string(),
+            raw: raw.to_string(),
         })
     }
 }
@@ -190,16 +188,6 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     #[test]
-    fn test_datetime_from_str_and_display() {
-        let v = DateTimeVersion::from_str("  2024-01-24T10:00:00.000Z  ").unwrap();
-        assert_eq!(v.to_string(), "2024-01-24T10:00:00.000Z");
-        assert_eq!(
-            DateTimeVersion::default().to_string(),
-            "1970-01-01T00:00:00Z"
-        );
-    }
-
-    #[test]
     fn test_datetime_from_str_errors() {
         assert!(matches!(
             DateTimeVersion::from_str(""),
@@ -212,6 +200,10 @@ mod tests {
         assert!(matches!(
             DateTimeVersion::from_str("2024-01-24"),
             Err(VersError::InvalidVersionFormat(_, _, _))
+        ));
+        assert!(matches!(
+            DateTimeVersion::from_str("  2024-01-24T10:00:00.000Z  "),
+            Err(VersError::InvalidVersionFormat(..))
         ));
         assert!(matches!(
             DateTimeVersion::from_str("2024-01-24T10:00:00.000Z\n"),
@@ -237,7 +229,6 @@ mod tests {
             DateTimeVersion::from_str("2024-01-24T10%3A00:00.000Z\r"),
             Err(VersError::InvalidConstraint(_))
         ));
-
     }
 
     #[test]
