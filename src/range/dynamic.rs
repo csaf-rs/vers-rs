@@ -2,8 +2,7 @@ use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
 use crate::schemes::{
     all::AllVersion, cargo::CargoVersion, datetime::DateTimeVersion, deb::DebVersion,
-    generic::GenericVersion, intdot::IntDotVersion, lexicographic::LexicographicVersion,
-    none::NoneVersion, semver::SemVer,
+    intdot::IntDotVersion, lexicographic::LexicographicVersion, none::NoneVersion, semver::SemVer,
 };
 use crate::util::ascii_whitespace::is_ascii_vers_whitespace;
 use crate::{VersError, VersVersionRange, VersionConstraint, VersioningScheme};
@@ -34,8 +33,6 @@ enum DynamicVersionRangeInner {
     Lexicographic(VersVersionRange<LexicographicVersion>),
     /// DateTime RFC 3339 versioning ("datetime" scheme)
     DateTime(VersVersionRange<DateTimeVersion>),
-    /// Generic versioning ("generic" scheme)
-    Generic(VersVersionRange<GenericVersion>),
     /// Universal range ("all" scheme)
     All(VersVersionRange<AllVersion>),
     /// Empty range ("none" scheme)
@@ -120,7 +117,6 @@ macro_rules! dispatch_inner {
             DynamicVersionRangeInner::IntDot($range) => $expr,
             DynamicVersionRangeInner::Lexicographic($range) => $expr,
             DynamicVersionRangeInner::DateTime($range) => $expr,
-            DynamicVersionRangeInner::Generic($range) => $expr,
             DynamicVersionRangeInner::All($range) => $expr,
             DynamicVersionRangeInner::None($range) => $expr,
         }
@@ -176,9 +172,6 @@ impl DynamicVersionRange {
             VersioningScheme::Datetime => DynamicVersionRangeInner::DateTime(
                 DateTimeVersion::from_native_string(scheme, raw)?,
             ),
-            VersioningScheme::Generic => {
-                DynamicVersionRangeInner::Generic(GenericVersion::from_native_string(scheme, raw)?)
-            }
             // For all and none, there isn't a "native" range, as only "*" is allowed.
             VersioningScheme::All => {
                 DynamicVersionRangeInner::All(AllVersion::from_native_string(scheme, raw)?)
@@ -292,9 +285,6 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::DateTime(range) => {
                 range.contains(version_str.parse::<DateTimeVersion>()?)
             }
-            DynamicVersionRangeInner::Generic(range) => {
-                range.contains(version_str.parse::<GenericVersion>()?)
-            }
             // `all` and `none` versions carry no payload, so the tested string
             // is deliberately not parsed (or validated): only the range decides.
             DynamicVersionRangeInner::All(range) => range.contains(AllVersion),
@@ -385,7 +375,6 @@ impl FromStr for DynamicVersionRange {
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(s.parse()?),
             VersioningScheme::Lexicographic => DynamicVersionRangeInner::Lexicographic(s.parse()?),
             VersioningScheme::Datetime => DynamicVersionRangeInner::DateTime(s.parse()?),
-            VersioningScheme::Generic => DynamicVersionRangeInner::Generic(s.parse()?),
             VersioningScheme::All => DynamicVersionRangeInner::All(s.parse()?),
             VersioningScheme::None => DynamicVersionRangeInner::None(s.parse()?),
             _ => return Err(VersError::UnsupportedVersioningScheme(versioning_scheme)),
@@ -457,9 +446,6 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             VersioningScheme::Datetime => DynamicVersionRangeInner::DateTime(
-                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
-            ),
-            VersioningScheme::Generic => DynamicVersionRangeInner::Generic(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             VersioningScheme::All => DynamicVersionRangeInner::All(
