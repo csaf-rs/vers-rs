@@ -225,6 +225,19 @@ mod tests {
             DateTimeVersion::from_str("2024-01-24T10:00:00.000Z\r"),
             Err(VersError::InvalidConstraint(_))
         ));
+        assert!(matches!(
+            DateTimeVersion::from_str("2024-01-24T10:00:00.000z\r"),
+            Err(VersError::InvalidConstraint(_))
+        ));
+        assert!(matches!(
+            DateTimeVersion::from_str("2024-01-24t10:00:00.000Z\r"),
+            Err(VersError::InvalidConstraint(_))
+        ));
+        assert!(matches!(
+            DateTimeVersion::from_str("2024-01-24T10%3A00:00.000Z\r"),
+            Err(VersError::InvalidConstraint(_))
+        ));
+
     }
 
     #[test]
