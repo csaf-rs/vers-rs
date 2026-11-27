@@ -1,5 +1,6 @@
 use crate::constraint::NativeVersionConverter;
 use crate::range::VersionRange;
+use crate::schemes::generic::GenericVersion;
 use crate::schemes::{
     all::AllVersion, cargo::CargoVersion, deb::DebVersion, intdot::IntDotVersion,
     none::NoneVersion, semver::SemVer,
@@ -27,6 +28,8 @@ enum DynamicVersionRangeInner {
     Deb(VersVersionRange<DebVersion>),
     /// Cargo-based range ("cargo" scheme)
     Cargo(VersVersionRange<CargoVersion>),
+    /// Generic-based range ("generic" scheme)
+    Generic(VersVersionRange<GenericVersion>),
     /// Generic dot-separated-integers range ("intdot" scheme)
     IntDot(VersVersionRange<IntDotVersion>),
     /// Universal range ("all" scheme)
@@ -74,7 +77,7 @@ enum DynamicVersionRangeInner {
 #[cfg_attr(
     feature = "wasm",
     tsify(
-        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion> | VersVersionRange<AllVersion> | VersVersionRange<NoneVersion>"
+        type = "VersVersionRange<SemVer> | VersVersionRange<DebVersion> | VersVersionRange<CargoVersion> | VersVersionRange<IntDotVersion> | VersVersionRange<AllVersion> | VersVersionRange<NoneVersion> | VersVersionRange<GenericVersion>"
     )
 )]
 pub struct DynamicVersionRange {
@@ -110,6 +113,7 @@ macro_rules! dispatch_inner {
             DynamicVersionRangeInner::SemVer($range) => $expr,
             DynamicVersionRangeInner::Deb($range) => $expr,
             DynamicVersionRangeInner::Cargo($range) => $expr,
+            DynamicVersionRangeInner::Generic($range) => $expr,
             DynamicVersionRangeInner::IntDot($range) => $expr,
             DynamicVersionRangeInner::All($range) => $expr,
             DynamicVersionRangeInner::None($range) => $expr,
@@ -156,6 +160,9 @@ impl DynamicVersionRange {
             }
             VersioningScheme::Cargo => {
                 DynamicVersionRangeInner::Cargo(CargoVersion::from_native_string(scheme, raw)?)
+            }
+            VersioningScheme::Generic => {
+                DynamicVersionRangeInner::Generic(GenericVersion::from_native_string(scheme, raw)?)
             }
             VersioningScheme::Intdot => {
                 DynamicVersionRangeInner::IntDot(IntDotVersion::from_native_string(scheme, raw)?)
@@ -264,6 +271,9 @@ impl VersionRange<String> for DynamicVersionRange {
             DynamicVersionRangeInner::Cargo(range) => {
                 range.contains(version_str.parse::<CargoVersion>()?)
             }
+            DynamicVersionRangeInner::Generic(range) => {
+                range.contains(version_str.parse::<GenericVersion>()?)
+            }
             DynamicVersionRangeInner::IntDot(range) => {
                 range.contains(version_str.parse::<IntDotVersion>()?)
             }
@@ -354,6 +364,7 @@ impl FromStr for DynamicVersionRange {
             }
             VersioningScheme::Deb => DynamicVersionRangeInner::Deb(s.parse()?),
             VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(s.parse()?),
+            VersioningScheme::Generic => DynamicVersionRangeInner::Generic(s.parse()?),
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(s.parse()?),
             VersioningScheme::All => DynamicVersionRangeInner::All(s.parse()?),
             VersioningScheme::None => DynamicVersionRangeInner::None(s.parse()?),
@@ -417,6 +428,9 @@ impl<'de> serde::de::Deserialize<'de> for DynamicVersionRange {
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             VersioningScheme::Cargo => DynamicVersionRangeInner::Cargo(
+                serde_json::from_value(value).map_err(serde::de::Error::custom)?,
+            ),
+            VersioningScheme::Generic => DynamicVersionRangeInner::Generic(
                 serde_json::from_value(value).map_err(serde::de::Error::custom)?,
             ),
             VersioningScheme::Intdot => DynamicVersionRangeInner::IntDot(
